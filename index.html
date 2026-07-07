@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="iron">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JACKED — Weights Tracker</title>
+<meta name="description" content="Track your gym workouts: programs, sessions, PRs and progress. Works offline, kg and lb.">
+<meta name="theme-color" content="#101318">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1 class="logo">
+    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+      <path d="M1.5 12h1.5M21 12h1.5"/><rect x="4" y="6" width="3" height="12" rx="1"/><rect x="8" y="8" width="2.4" height="8" rx="1"/><rect x="17" y="6" width="3" height="12" rx="1"/><rect x="13.6" y="8" width="2.4" height="8" rx="1"/><path d="M10.4 12h3.2"/>
+    </svg>
+    JACK<b>ED</b>
+  </h1>
+  <div class="header-actions">
+    <button id="unitToggle" class="chip" title="Switch between kg and lb">kg</button>
+    <button id="plateBtn" class="icon-btn" title="Plate calculator" aria-label="Plate calculator">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M2 12h2M20 12h2"/><rect x="4" y="7" width="3" height="10" rx="1"/><rect x="17" y="7" width="3" height="10" rx="1"/><path d="M7 12h10"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<main id="view" class="view"></main>
+
+<nav class="bottom-nav" id="bottomNav">
+  <button data-tab="programs" class="nav-btn active">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+    <span>Programs</span>
+  </button>
+  <button data-tab="history" class="nav-btn">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>
+    <span>History</span>
+  </button>
+  <button data-tab="progress" class="nav-btn">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 21h18"/><path d="M5 17l4-6 4 3 6-9"/></svg>
+    <span>Progress</span>
+  </button>
+  <button data-tab="settings" class="nav-btn">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+    <span>Settings</span>
+  </button>
+</nav>
+
+<button id="timerFab" class="timer-fab" title="Rest timer" aria-label="Rest timer">
+  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg>
+  <span id="timerFabText"></span>
+</button>
+
+<div id="timerPanel" class="timer-panel hidden">
+  <div class="timer-display" id="timerDisplay">2:00</div>
+  <div class="timer-presets">
+    <button data-sec="60">1:00</button>
+    <button data-sec="90">1:30</button>
+    <button data-sec="120">2:00</button>
+    <button data-sec="180">3:00</button>
+  </div>
+  <div class="timer-adjust">
+    <button id="timerMinus">−15s</button>
+    <button id="timerStart" class="primary">Start</button>
+    <button id="timerPlus">+15s</button>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<datalist id="exNames"></datalist>
+
+<script src="app.js"></script>
+</body>
+</html>
