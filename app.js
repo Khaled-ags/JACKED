@@ -60,19 +60,31 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-/* ---------------- Units ---------------- */
+/* ---------------- Units ----------------
+   Weights are always stored in kg. The settings unit is the DEFAULT;
+   exercises (ex.unit) and session entries (en.unit) may override it. */
 function unit() { return state.settings.unit; }
-function toDisp(kg) {
+function toDisp(kg, u) {
   if (kg == null || !isFinite(kg)) return "";
-  const v = unit() === "kg" ? kg : kg / KG_PER_LB;
+  const v = (u || unit()) === "kg" ? kg : kg / KG_PER_LB;
   return String(Math.round(v * 10) / 10);
 }
-function fromDisp(val) {
+function fromDisp(val, u) {
   const n = parseFloat(val);
   if (isNaN(n)) return null;
-  return unit() === "kg" ? n : n * KG_PER_LB;
+  return (u || unit()) === "kg" ? n : n * KG_PER_LB;
 }
-function fmtW(kg) { return kg == null ? "—" : `${toDisp(kg)} ${unit()}`; }
+function fmtW(kg, u) { return kg == null ? "—" : `${toDisp(kg, u)} ${u || unit()}`; }
+/* effective unit for an exercise name (lowercased key): newest session
+   override wins, then any program override, then the default */
+function unitForExercise(key) {
+  const ss = [...state.sessions].sort((a, b) => a.date < b.date ? 1 : -1);
+  for (const s of ss) for (const en of s.entries)
+    if (en.unit && (en.name || "").trim().toLowerCase() === key) return en.unit;
+  for (const p of state.programs) for (const w of p.weeks) for (const d of w.days) for (const ex of d.exercises)
+    if (ex.unit && (ex.name || "").trim().toLowerCase() === key) return ex.unit;
+  return unit();
+}
 
 /* ---------------- 1RM / PR helpers ---------------- */
 function e1rm(kg, reps) {
@@ -162,13 +174,21 @@ function renderProgramList() {
   }).join("");
   $view.innerHTML = `
     <div class="page-title">Training Programs</div>
-    ${cards || `<div class="empty">${BARBELL_SVG}<br>No programs yet.<br>Tap <strong>+</strong> to build your first training block.</div>`}
+    <button class="btn block" id="importSplitBtn" style="margin-bottom:12px">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Import split from screenshot
+    </button>
+    <input type="file" id="splitFile" accept="image/*" class="hidden">
+    ${cards || `<div class="empty">${BARBELL_SVG}<br>No programs yet.<br>Tap <strong>+</strong> to build one, or import a screenshot of your split.</div>`}
     <button class="fab-add" id="addProgram">+</button>`;
   document.getElementById("addProgram").onclick = () => {
     const p = { id: uid(), name: "New Program", weeks: [{ days: [{ name: "Day 1", exercises: [] }] }] };
     state.programs.push(p); save();
     route.programId = p.id; route.weekIdx = 0; render();
   };
+  const splitFile = document.getElementById("splitFile");
+  document.getElementById("importSplitBtn").onclick = () => splitFile.click();
+  splitFile.onchange = () => { if (splitFile.files[0]) importSplitFromImage(splitFile.files[0]); };
   $view.querySelectorAll("[data-open]").forEach(el => el.onclick = e => {
     if (e.target.closest("[data-del]")) return;
     route.programId = el.dataset.open; route.weekIdx = 0; render();
@@ -257,6 +277,7 @@ function exCardHTML(ex, di, xi) {
   const lift = liftKey(ex.name);
   const auto = ex.percent != null && lift && state.maxes[lift];
   const noMax = ex.percent != null && lift && !state.maxes[lift];
+  const exU = ex.unit || unit();
   return `<div class="ex-card ${auto ? "autocalc" : ""}" data-di="${di}" data-xi="${xi}">
     <div class="row">
       <input class="input grow ex-f" data-f="name" list="exNames" placeholder="Exercise name" value="${esc(ex.name)}">
@@ -265,11 +286,12 @@ function exCardHTML(ex, di, xi) {
       <button class="btn small danger ex-del">✕</button>
     </div>
     <div class="ex-grid">
-      <label class="field weightfield">Weight (${unit()})
+      <label class="field weightfield">Weight
         <span class="stepper">
-          <input class="input ex-f" data-f="weight" type="number" step="any" inputmode="decimal" value="${toDisp(ex.weightKg)}">
-          <button type="button" class="w-dec" title="−${unit() === "kg" ? "2.5" : "5"} ${unit()}">−</button>
-          <button type="button" class="w-inc" title="+${unit() === "kg" ? "2.5" : "5"} ${unit()}">+</button>
+          <input class="input ex-f" data-f="weight" type="number" step="any" inputmode="decimal" value="${toDisp(ex.weightKg, exU)}">
+          <button type="button" class="w-dec" title="−${exU === "kg" ? "2.5" : "5"} ${exU}">−</button>
+          <button type="button" class="w-inc" title="+${exU === "kg" ? "2.5" : "5"} ${exU}">+</button>
+          <button type="button" class="w-unit ${ex.unit ? "override" : ""}" title="Unit for this exercise (default: ${unit()})">${exU}</button>
         </span>
       </label>
       <label class="field">%1RM<input class="input ex-f" data-f="percent" type="number" inputmode="decimal" value="${ex.percent ?? ""}" placeholder="—"></label>
@@ -288,18 +310,19 @@ function bindExCards(week) {
     const di = +card.dataset.di, xi = +card.dataset.xi;
     const list = week.days[di].exercises;
     const ex = list[xi];
+    const exU = () => ex.unit || unit();
     card.querySelectorAll(".ex-f").forEach(inp => {
       inp.addEventListener("input", () => {
         const f = inp.dataset.f, v = inp.value;
         if (f === "name") ex.name = v;
         else if (f === "notes") ex.notes = v;
-        else if (f === "weight") { ex.weightKg = fromDisp(v); ex.percent = null; const pct = card.querySelector('[data-f="percent"]'); if (pct) pct.value = ""; }
+        else if (f === "weight") { ex.weightKg = fromDisp(v, exU()); ex.percent = null; const pct = card.querySelector('[data-f="percent"]'); if (pct) pct.value = ""; }
         else if (f === "percent") {
           ex.percent = v === "" ? null : parseFloat(v);
           const lift = liftKey(ex.name);
           if (ex.percent != null && lift && state.maxes[lift]) {
             ex.weightKg = Math.round(state.maxes[lift] * ex.percent / 100 * 2) / 2;
-            const w = card.querySelector('[data-f="weight"]'); if (w) w.value = toDisp(ex.weightKg);
+            const w = card.querySelector('[data-f="weight"]'); if (w) w.value = toDisp(ex.weightKg, exU());
           }
         }
         else ex[f] = v === "" ? null : parseFloat(v);
@@ -307,15 +330,20 @@ function bindExCards(week) {
       });
     });
     const bump = dir => {
-      const stepKg = unit() === "kg" ? 2.5 : 5 * KG_PER_LB;
+      const stepKg = exU() === "kg" ? 2.5 : 5 * KG_PER_LB;
       ex.weightKg = Math.max(0, (ex.weightKg || 0) + dir * stepKg);
       ex.percent = null;
-      const w = card.querySelector('[data-f="weight"]'); if (w) w.value = toDisp(ex.weightKg);
+      const w = card.querySelector('[data-f="weight"]'); if (w) w.value = toDisp(ex.weightKg, exU());
       const pct = card.querySelector('[data-f="percent"]'); if (pct) pct.value = "";
       save();
     };
     card.querySelector(".w-dec").onclick = () => bump(-1);
     card.querySelector(".w-inc").onclick = () => bump(1);
+    card.querySelector(".w-unit").onclick = () => {
+      const next = exU() === "kg" ? "lb" : "kg";
+      ex.unit = next === unit() ? null : next;
+      save(); render();
+    };
     card.querySelector(".ex-del").onclick = () => { list.splice(xi, 1); save(); render(); };
     card.querySelector(".ex-up").onclick = () => { if (xi > 0) { [list[xi - 1], list[xi]] = [list[xi], list[xi - 1]]; save(); render(); } };
     card.querySelector(".ex-down").onclick = () => { if (xi < list.length - 1) { [list[xi + 1], list[xi]] = [list[xi], list[xi + 1]]; save(); render(); } };
@@ -328,7 +356,7 @@ function logDay(program, weekIdx, day) {
     id: uid(), date: todayISO(),
     label: `${program.name} · W${weekIdx + 1} · ${day.name}`,
     entries: day.exercises.filter(ex => ex.name).map(ex => ({
-      id: uid(), name: ex.name, notes: "",
+      id: uid(), name: ex.name, unit: ex.unit || null, notes: "",
       sets: Array.from({ length: Math.max(1, ex.sets || 1) }, () => ({ weightKg: ex.weightKg, reps: ex.reps })),
     })),
   };
@@ -386,12 +414,13 @@ function renderSessionEditor() {
     <div class="card" data-ei="${ei}">
       <div class="row">
         <input class="input grow en-name" list="exNames" placeholder="Exercise name" value="${esc(en.name)}">
+        <button class="btn small en-unit ${en.unit ? "override" : ""}" title="Unit for this exercise (default: ${unit()})">${en.unit || unit()}</button>
         <button class="btn small danger en-del">✕</button>
       </div>
       ${en.sets.map((set, si) => `
         <div class="set-row" data-si="${si}">
           <span class="setnum">${si + 1}</span>
-          <label class="field">Weight (${unit()})<input class="input set-w" type="number" step="any" inputmode="decimal" value="${toDisp(set.weightKg)}"></label>
+          <label class="field">Weight (${en.unit || unit()})<input class="input set-w" type="number" step="any" inputmode="decimal" value="${toDisp(set.weightKg, en.unit || unit())}"></label>
           <label class="field">Reps<input class="input set-r" type="number" inputmode="numeric" value="${set.reps ?? ""}"></label>
           <button class="btn small danger set-del">✕</button>
         </div>`).join("")}
@@ -424,6 +453,11 @@ function renderSessionEditor() {
     const en = s.entries[+card.dataset.ei];
     bindValue(card.querySelector(".en-name"), v => { en.name = v; });
     bindValue(card.querySelector(".en-notes"), v => { en.notes = v; });
+    card.querySelector(".en-unit").onclick = () => {
+      const next = (en.unit || unit()) === "kg" ? "lb" : "kg";
+      en.unit = next === unit() ? null : next;
+      save(); render();
+    };
     card.querySelector(".en-del").onclick = () => { s.entries.splice(+card.dataset.ei, 1); save(); render(); };
     card.querySelector(".en-addset").onclick = () => {
       const last = en.sets[en.sets.length - 1];
@@ -432,7 +466,7 @@ function renderSessionEditor() {
     };
     card.querySelectorAll(".set-row").forEach(rowEl => {
       const set = en.sets[+rowEl.dataset.si];
-      rowEl.querySelector(".set-w").addEventListener("input", e => { set.weightKg = fromDisp(e.target.value); save(); });
+      rowEl.querySelector(".set-w").addEventListener("input", e => { set.weightKg = fromDisp(e.target.value, en.unit || unit()); save(); });
       rowEl.querySelector(".set-r").addEventListener("input", e => { set.reps = e.target.value === "" ? null : parseInt(e.target.value, 10); save(); });
       rowEl.querySelector(".set-del").onclick = () => { en.sets.splice(+rowEl.dataset.si, 1); save(); render(); };
     });
@@ -459,6 +493,7 @@ function renderProgress() {
     d.e = Math.max(d.e, e1rm(r.weightKg, r.reps));
   }
   const points = Object.entries(byDate).map(([date, v]) => ({ date, w: v.w, e: v.e }));
+  const exUnit = unitForExercise(route.progressEx);
   const bestW = Math.max(...rows.map(r => r.weightKg));
   const bestE = Math.max(...rows.map(r => e1rm(r.weightKg, r.reps)));
   const lastDate = rows[rows.length - 1].date;
@@ -480,36 +515,39 @@ function renderProgress() {
       <select class="input" id="exSelect">${names.map(n => `<option value="${esc(n)}" ${n === route.progressEx ? "selected" : ""}>${esc(displayName(n))}</option>`).join("")}</select>
     </label>
     <div class="stat-grid">
-      <div class="stat"><div class="val">${fmtW(bestW)}</div><div class="lbl">Best set</div></div>
-      <div class="stat"><div class="val">${fmtW(bestE)}</div><div class="lbl">Best est. 1RM</div></div>
+      <div class="stat"><div class="val">${fmtW(bestW, exUnit)}</div><div class="lbl">Best set</div></div>
+      <div class="stat"><div class="val">${fmtW(bestE, exUnit)}</div><div class="lbl">Best est. 1RM</div></div>
       <div class="stat"><div class="val">${points.length}</div><div class="lbl">Sessions</div></div>
       <div class="stat"><div class="val">${new Date(lastDate + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</div><div class="lbl">Last trained</div></div>
     </div>
-    <div class="chart-wrap">${chartSVG(points)}</div>
+    <div class="chart-wrap">${chartSVG(points, exUnit)}</div>
     <div class="legend">
       <span><i style="background:var(--accent)"></i>Top set weight</span>
       <span><i style="background:var(--accent2)"></i>Est. 1RM</span>
     </div>
     <div class="page-title" style="margin-top:22px">Recent PRs</div>
-    ${prFeed.slice(0, 12).map(p => `<div class="card row between">
+    ${prFeed.slice(0, 12).map(p => {
+      const pu = unitForExercise(p.name);
+      return `<div class="card row between">
       <div><strong>${esc(displayName(p.name))}</strong><div class="muted">${new Date(p.date + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</div></div>
-      <span class="badge">★ ${toDisp(p.weightKg)} ${unit()} × ${p.reps}</span>
-    </div>`).join("") || `<div class="muted">No PRs yet.</div>`}`;
+      <span class="badge">★ ${toDisp(p.weightKg, pu)} ${pu} × ${p.reps}</span>
+    </div>`;
+    }).join("") || `<div class="muted">No PRs yet.</div>`}`;
 
   document.getElementById("exSelect").onchange = e => { route.progressEx = e.target.value; render(); };
 }
 
-function chartSVG(points) {
+function chartSVG(points, u) {
   if (points.length < 2) return `<div class="muted" style="padding:20px;text-align:center">Log this exercise in at least 2 sessions to see a chart.</div>`;
   const W = Math.max(560, points.length * 56), H = 240;
   const padL = 44, padR = 16, padT = 14, padB = 30;
-  const vals = points.flatMap(p => [p.w, p.e]).map(kg => parseFloat(toDisp(kg)));
+  const vals = points.flatMap(p => [p.w, p.e]).map(kg => parseFloat(toDisp(kg, u)));
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (lo === hi) { lo -= 5; hi += 5; }
   const span = hi - lo; lo -= span * 0.1; hi += span * 0.1;
   const x = i => padL + i * (W - padL - padR) / (points.length - 1);
   const y = v => padT + (hi - v) * (H - padT - padB) / (hi - lo);
-  const disp = kg => parseFloat(toDisp(kg));
+  const disp = kg => parseFloat(toDisp(kg, u));
 
   const gridLines = [];
   for (let i = 0; i <= 4; i++) {
@@ -551,12 +589,12 @@ function renderSettings() {
     <div class="page-title">Settings</div>
 
     <div class="card">
-      <label class="field">Units</label>
+      <label class="field">Default unit</label>
       <div class="segmented" style="margin-top:8px">
         <button data-unit="kg" class="${unit() === "kg" ? "active" : ""}">Kilograms (kg)</button>
         <button data-unit="lb" class="${unit() === "lb" ? "active" : ""}">Pounds (lb)</button>
       </div>
-      <div class="muted" style="margin-top:8px">Weights are stored precisely — switch anytime without losing accuracy.</div>
+      <div class="muted" style="margin-top:8px">Used everywhere unless an exercise has its own unit — tap the kg/lb chip on any exercise to override it (e.g. machines in kg, dumbbells in lb). Weights are stored precisely, so switching never loses accuracy.</div>
     </div>
 
     <div class="card">
@@ -648,6 +686,140 @@ function importData(text) {
     state = data; save(); applyTheme(); syncHeader(); render();
     toast("Backup imported");
   });
+}
+
+/* ---------------- Screenshot split import ----------------
+   OCR runs fully in the browser via tesseract.js (loaded on demand
+   from CDN, so this one feature needs internet on first use). */
+const TESSERACT_CDN = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+
+function ensureTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = TESSERACT_CDN;
+    s.onload = res;
+    s.onerror = () => rej(new Error("tesseract load failed"));
+    document.head.appendChild(s);
+  });
+}
+
+async function importSplitFromImage(file) {
+  modalRoot.innerHTML = `<div class="modal-backdrop"><div class="modal">
+    <h3>Import Split</h3>
+    <div class="muted" id="ocrStatus">Loading OCR engine…</div>
+    <div class="ocr-bar"><i id="ocrFill" style="width:0%"></i></div>
+  </div></div>`;
+  const status = msg => { const el = document.getElementById("ocrStatus"); if (el) el.textContent = msg; };
+  const fill = p => { const el = document.getElementById("ocrFill"); if (el) el.style.width = Math.round(p * 100) + "%"; };
+  try {
+    await ensureTesseract();
+    status("Reading screenshot…");
+    const worker = await Tesseract.createWorker("eng", 1, {
+      logger: m => { if (m.status === "recognizing text") fill(m.progress); },
+    });
+    const { data } = await worker.recognize(file);
+    await worker.terminate();
+    closeModal();
+    const days = parseSplitText(data.text || "");
+    const count = days.reduce((a, d) => a + d.exercises.length, 0);
+    if (!count) return toast("Couldn't find exercises in that screenshot", true);
+    const program = {
+      id: uid(), name: "Imported Split",
+      weeks: [{
+        days: days.map(d => ({
+          name: d.name,
+          exercises: d.exercises.map(e => ({ id: uid(), name: e.name, weightKg: null, percent: null, sets: e.sets, reps: e.reps, rpe: null, notes: "" })),
+        })),
+      }],
+    };
+    state.programs.push(program); save();
+    route.tab = "programs"; route.programId = program.id; route.weekIdx = 0; render();
+    toast(`Imported ${count} exercise${count !== 1 ? "s" : ""} — check names and fill any blanks`);
+  } catch (err) {
+    console.error(err);
+    closeModal();
+    toast("Couldn't read the screenshot — check your internet and try again", true);
+  }
+}
+
+/* Turn OCR text into [{name, exercises:[{name, sets, reps}]}].
+   Missing sets/reps stay null (blank fields), per design.
+   Handles: "Day 1: Chest", "PUSH DAY", weekday tables, "Bench 4x8",
+   "(3x10 - each leg)", "(3x failure)", "4 sets of 6-8 reps",
+   and table rows like "Chest Press 4 6-10". */
+function parseSplitText(text) {
+  // day headers that always start a new day (may carry a title after them)
+  const DAY_NUM_RE = /^(?:day\s*\d+|week\s*\d+\s*day\s*\d+|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+  const DAY_WORD_RE = /^(?:push|pull|legs?|upper|lower|full\s*body|rest)\s*day\b\s*[:\-–—]?\s*$/i;
+  // bare muscle-group labels: fold into an empty day's title, or start a day
+  const MUSCLE_WORD = "push|pull|legs?|upper|lower|chest|back|shoulders?|arms?|biceps|triceps|core|abs|quads|hamstrings|glutes|calves|traps|delts|rear\\s*delts|full\\s*body";
+  const MUSCLE_RE = new RegExp(`^(?:${MUSCLE_WORD})(?:\\s*[&+,/]?\\s*(?:and\\s+)?(?:${MUSCLE_WORD}))*\\s*[:\\-–—]?\\s*$`, "i");
+  // lines that are never exercises
+  const JUNK_WORD_RE = /^(?:workouts?|training|splits?|plans?|programs?|routines?|exercises?|sets?|reps?|weight|notes?|name|schedule|focus|day|week|optional|superset)\s*$/i;
+  const JUNK_ANY_RE = /(?:workout\s*split|day\s*split|bro\s*split|workout\s*plan|training\s*plan|workout\s*focus|full\s*body\s*workout|muscle\s*group|for\s+muscle|build\s+muscle|lose\s+fat|get\s+stronger|strength\s+gain|muscle\s*&|&\s*strength|macros|calories|protein|carbs|fat\b|water|download|\.com|www\.|https?:|key\s*rules|remember|progressive\s*overload|training\s*days|rest\s*days|consistency|\d\s*[:.]\s*\d{2}\s*(?:am|pm)|\b(?:19|20)\d{2}\b)/i;
+
+  // "Bench Press 3x failure" / "Push-Ups: 2 sets to failure"
+  const FAIL_RE = /^(.*?[A-Za-z])[\s:\-–—.]*(\d{1,2})\s*(?:[x×*]|sets?)?\s*(?:sets?\s*)?(?:to\s+)?failure\b.*$/i;
+  // "Bench Press 4x8" / "RDL's 3x10 - each leg" / "Romanian Deadlifts: 3x 8-10"
+  const AFTER_RE = /^(.*?[A-Za-z])[\s:\-–—.]*(\d{1,2})(?:\s*[-–]\s*\d{1,2})?\s*[x×*]\s*(\d{1,3})(?:\s*[-–]\s*\d{1,3})?(?:[\s\-–—].*)?$/;
+  // "4x8 Bench Press"
+  const BEFORE_RE = /^(\d{1,2})\s*[x×*]\s*(\d{1,3})(?:\s*[-–]\s*\d{1,3})?[\s:\-–—.]*([A-Za-z].*)$/;
+  // "Bench Press: 4 sets of 6-8 reps" / "Lunges: 3 sets of 10 per leg" / "Shrugs 3 sets"
+  const WORD_RE = /^(.*?[A-Za-z])[\s:\-–—.]*(\d{1,2})(?:\s*[-–]\s*\d{1,2})?\s*sets?(?:\s*(?:of|[x×*])?\s*(\d{1,3})(?:\s*[-–]\s*\d{1,3})?)?(?:\s*reps?)?(?:[\s\-–—,].*)?$/i;
+  // table rows: "Chest Press 4 6-10" / "Lateral Raises 3 15" (sets & reps columns)
+  const TABLE_RE = /^(.*?[A-Za-z])\s+(\d{1,2})(?:\s*[-–]\s*\d{1,2})?(?:\s+each)?\s+(\d{1,3})(?:\s*[-–]\s*\d{1,3})?(?:\s*(?:reps?|each\b.*))?\s*$/;
+
+  const clean = s => s.replace(/[()|_~`"“”•·]+/g, " ").replace(/\s{2,}/g, " ").replace(/^[\s:\-–—.,]+|[\s:\-–—.,]+$/g, "").trim();
+  const titleCase = s => s.replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
+  const days = [];
+  let current = null;
+  const newDay = (name, auto) => { current = { name: titleCase(name).slice(0, 40), exercises: [], fromHeader: !auto, auto: !!auto }; days.push(current); };
+
+  for (const raw of text.split(/\r?\n/)) {
+    // strip list bullets like "1. " / "3) " / "- " but never a leading "3x8"
+    const line = clean(raw.replace(/^\s*(?:[•·\-–—*>]|\d{1,2}[.)])\s+/, ""));
+    if (line.length < 2 || !/[A-Za-z]/.test(line)) continue;
+    if (JUNK_WORD_RE.test(line) || JUNK_ANY_RE.test(line)) continue;
+
+    if (DAY_NUM_RE.test(line) || DAY_WORD_RE.test(line)) { newDay(line); continue; }
+    if (MUSCLE_RE.test(line)) {
+      // column labels that repeat the day title ("Chest" under "Day 1 Chest…") → skip;
+      // "Chest & Back" after a bare "Monday" header → fold into the day title;
+      // "PUSH"-style headers between exercise groups → start a new day
+      const key = (line.toLowerCase().match(/[a-z]+/) || [""])[0];
+      if (current && current.name.toLowerCase().includes(key)) continue;
+      if (current && !current.exercises.length && current.fromHeader) current.name = (current.name + " — " + titleCase(line)).slice(0, 40);
+      else newDay(line);
+      continue;
+    }
+
+    let name = null, sets = null, reps = null, m;
+    if ((m = FAIL_RE.exec(line))) { name = m[1]; sets = +m[2]; }
+    else if ((m = AFTER_RE.exec(line))) { name = m[1]; sets = +m[2]; reps = +m[3]; }
+    else if ((m = BEFORE_RE.exec(line))) { sets = +m[1]; reps = +m[2]; name = m[3]; }
+    else if ((m = WORD_RE.exec(line))) { name = m[1]; sets = +m[2]; reps = m[3] ? +m[3] : null; }
+    else if ((m = TABLE_RE.exec(line))) { name = m[1]; sets = +m[2]; reps = +m[3]; }
+    else if (/[A-Za-z]{3,}/.test(line) && line.length <= 40) { name = line; } // name only — sets/reps stay blank
+
+    if (!name) continue;
+    name = clean(name);
+    if (name.length < 3 || !/[A-Za-z]{3}/.test(name)) continue;
+    if (sets != null && !(sets >= 1 && sets <= 20)) sets = null;
+    if (reps != null && !(reps >= 1 && reps <= 100)) reps = null;
+    if (!current) newDay("Day 1", true);
+    current.exercises.push({ name, sets, reps });
+  }
+  // text before the first real day header is usually poster-title junk:
+  // when header days carry the exercises, drop name-only strays from auto days
+  if (days.some(d => !d.auto && d.exercises.length)) {
+    for (const d of days) if (d.auto) d.exercises = d.exercises.filter(e => e.sets != null || e.reps != null);
+  }
+  // schedule-style screenshots (weekday → muscle group) yield named but empty
+  // days — keep those; otherwise drop empty days
+  const withEx = days.filter(d => d.exercises.length);
+  if (!withEx.length && days.length >= 2) return days;
+  return withEx;
 }
 
 /* ---------------- Plate calculator ---------------- */
@@ -795,7 +967,7 @@ document.querySelectorAll(".nav-btn").forEach(b => b.onclick = () => {
 document.getElementById("unitToggle").onclick = () => {
   state.settings.unit = unit() === "kg" ? "lb" : "kg";
   save(); syncHeader(); render();
-  toast(`Showing weights in ${unit()}`);
+  toast(`Default unit: ${unit()} (per-exercise overrides kept)`);
 };
 document.getElementById("plateBtn").onclick = openPlateCalc;
 

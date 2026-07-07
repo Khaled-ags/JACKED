@@ -189,6 +189,26 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 .stepper button:last-child { border-radius: 0 10px 10px 0; }
 .stepper button + button { border-left: none; }
 .stepper button:active { background: var(--accent); color: var(--accent-text); }
+.stepper .w-unit {
+  width: 42px; font-family: var(--font-display); font-size: .78rem;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+}
+.stepper .w-unit.override, .btn.en-unit.override {
+  color: var(--accent2); border-color: color-mix(in srgb, var(--accent2) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent2) 12%, var(--bg3));
+}
+.btn.en-unit { text-transform: uppercase; font-family: var(--font-display); letter-spacing: .04em; min-width: 44px; }
+
+/* OCR import progress */
+.ocr-bar {
+  height: 8px; margin-top: 12px; border-radius: 999px;
+  background: var(--bg3); border: 1px solid var(--border); overflow: hidden;
+}
+.ocr-bar i {
+  display: block; height: 100%; width: 0;
+  background: var(--accent); border-radius: 999px;
+  transition: width .2s ease; box-shadow: var(--glow) var(--accent);
+}
 
 /* ============ Bottom nav ============ */
 .bottom-nav {
