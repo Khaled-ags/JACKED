@@ -148,8 +148,10 @@ button { cursor: pointer; }
   box-shadow: var(--glow) color-mix(in srgb, var(--accent) 60%, transparent);
 }
 .btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
-.btn.small { padding: 5px 10px; font-size: .8rem; border-radius: 8px; }
-.btn.block { width: 100%; }
+.btn.small { padding: 7px 11px; font-size: .8rem; border-radius: 8px; min-height: 38px; }
+.btn.block { width: 100%; padding: 12px 14px; }
+/* square icon-style small buttons (reorder/delete on exercise cards) */
+.ex-card .row > .btn.small { flex: none; min-width: 38px; padding: 7px 8px; }
 .btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .btn.primary:hover { border-color: var(--accent); filter: brightness(1.07); }
 .btn:active { transform: scale(.97); }
@@ -245,19 +247,35 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 .week-tabs button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); box-shadow: var(--glow) var(--accent); }
 
 .day-card { padding: 0; overflow: hidden; }
-.day-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; user-select: none; }
+.day-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; user-select: none; }
 .day-head .caret { transition: transform .2s; color: var(--muted); flex: none; }
 .day-card.open .day-head .caret { transform: rotate(90deg); }
-.day-body { padding: 0 14px 14px; border-top: 1px solid var(--border); }
+.day-body { padding: 0 12px 14px; border-top: 1px solid var(--border); }
+
+/* exercise-count control in the day header */
+.ex-count {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 999px;
+  padding: 7px 10px 7px 12px; color: var(--accent); cursor: text; min-height: 38px;
+}
+.ex-count:focus-within { border-color: var(--accent); }
+.ex-count-input {
+  width: 2.4ch; min-width: 2.4ch; background: none; border: none; outline: none;
+  color: var(--text); font-family: var(--font-display); font-weight: 800;
+  font-size: 1rem; text-align: center; padding: 0;
+}
 
 .ex-card {
   background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
   padding: 10px; margin-top: 10px;
 }
 .ex-card.autocalc { border-color: color-mix(in srgb, var(--accent2) 60%, var(--border)); }
-.ex-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-.ex-grid .field.wide { grid-column: span 2; }
-.ex-grid .field.weightfield { grid-column: span 2; }
+.ex-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
+.ex-grid .field.wide, .ex-grid .field.weightfield { grid-column: span 2; }
+@media (min-width: 560px) {
+  .ex-grid { grid-template-columns: repeat(4, 1fr); }
+  .ex-grid .field.wide, .ex-grid .field.weightfield { grid-column: span 2; }
+}
 
 .set-row { display: grid; grid-template-columns: 30px 1fr 1fr 38px; gap: 8px; align-items: end; margin-top: 8px; }
 .set-row .setnum {

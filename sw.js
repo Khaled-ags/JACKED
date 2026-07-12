@@ -1,5 +1,5 @@
 /* JACKED service worker — cache-first app shell */
-const CACHE = "jacked-v2";
+const CACHE = "jacked-v3";
 const ASSETS = ["./", "index.html", "styles.css", "app.js", "manifest.json", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {

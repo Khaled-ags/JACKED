@@ -142,14 +142,17 @@ function sessionPRs(session, history) {
 /* ---------------- Rendering ---------------- */
 const $view = document.getElementById("view");
 
-function render() {
+/* Pass { keepScroll: true } for in-place edits (add/remove/reorder within a
+   screen) so the page doesn't jump to the top; navigation resets to top. */
+function render(opts = {}) {
+  const prevY = window.scrollY;
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === route.tab));
   if (route.tab === "programs") route.programId ? renderProgramEditor() : renderProgramList();
   else if (route.tab === "history") route.sessionId ? renderSessionEditor() : renderHistory();
   else if (route.tab === "progress") renderProgress();
   else renderSettings();
   updateExNames();
-  window.scrollTo(0, 0);
+  window.scrollTo(0, opts.keepScroll ? prevY : 0);
 }
 function updateExNames() {
   const names = new Set(DEFAULT_EXERCISES);
@@ -218,12 +221,18 @@ function renderProgramEditor() {
       <div class="day-head">
         <span class="caret">▶</span>
         <input class="input grow day-name" data-di="${di}" value="${esc(day.name)}">
-        <button class="btn small primary" data-logday="${di}">Log workout</button>
-        <button class="btn small danger" data-deldaay="${di}">✕</button>
+        <span class="ex-count" title="Number of exercises — type a bigger number to add blank ones">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1.5 12h1.5M21 12h1.5"/><rect x="4" y="7.5" width="2.6" height="9" rx="1"/><rect x="17.4" y="7.5" width="2.6" height="9" rx="1"/><path d="M6.6 12h10.8"/></svg>
+          <input class="ex-count-input" data-di="${di}" type="number" inputmode="numeric" min="0" value="${day.exercises.length}" aria-label="Exercise count">
+        </span>
       </div>
       <div class="day-body">
         ${day.exercises.map((ex, xi) => exCardHTML(ex, di, xi)).join("")}
         <button class="btn block" data-addex="${di}" style="margin-top:10px">+ Add exercise</button>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary grow" data-logday="${di}">Log workout</button>
+          <button class="btn danger" data-deldaay="${di}" title="Delete day">Delete day</button>
+        </div>
       </div>
     </div>`).join("");
 
@@ -266,7 +275,25 @@ function renderProgramEditor() {
   }));
   $view.querySelectorAll("[data-addex]").forEach(b => b.onclick = () => {
     week.days[+b.dataset.addex].exercises.push({ id: uid(), name: "", weightKg: null, percent: null, sets: 3, reps: 8, rpe: null, notes: "" });
-    save(); render();
+    save(); render({ keepScroll: true });
+  });
+  $view.querySelectorAll(".ex-count-input").forEach(inp => {
+    const commit = () => {
+      const list = week.days[+inp.dataset.di].exercises;
+      const want = parseInt(inp.value, 10);
+      // only ever grow: add blank exercises; never remove existing ones
+      if (isFinite(want) && want > list.length) {
+        while (list.length < want) list.push({ id: uid(), name: "", weightKg: null, percent: null, sets: null, reps: null, rpe: null, notes: "" });
+        save(); render({ keepScroll: true });
+      } else {
+        inp.value = list.length; // reset display; lowering does nothing
+      }
+    };
+    inp.onchange = commit;
+    inp.addEventListener("focus", () => inp.select());
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } });
+    // make the whole count chip a tap target, not just the tiny number
+    inp.closest(".ex-count").addEventListener("click", e => { if (e.target !== inp) inp.focus(); });
   });
   $view.querySelectorAll("[data-logday]").forEach(b => b.onclick = () => logDay(p, route.weekIdx, week.days[+b.dataset.logday]));
 
@@ -294,9 +321,9 @@ function exCardHTML(ex, di, xi) {
           <button type="button" class="w-unit ${ex.unit ? "override" : ""}" title="Unit for this exercise (default: ${unit()})">${exU}</button>
         </span>
       </label>
-      <label class="field">%1RM<input class="input ex-f" data-f="percent" type="number" inputmode="decimal" value="${ex.percent ?? ""}" placeholder="—"></label>
       <label class="field">Sets<input class="input ex-f" data-f="sets" type="number" inputmode="numeric" value="${ex.sets ?? ""}"></label>
       <label class="field">Reps<input class="input ex-f" data-f="reps" type="number" inputmode="numeric" value="${ex.reps ?? ""}"></label>
+      <label class="field">%1RM<input class="input ex-f" data-f="percent" type="number" inputmode="decimal" value="${ex.percent ?? ""}" placeholder="—"></label>
       <label class="field">RPE<input class="input ex-f" data-f="rpe" type="number" step="0.5" inputmode="decimal" value="${ex.rpe ?? ""}" placeholder="—"></label>
       <label class="field wide">Notes<input class="input ex-f" data-f="notes" value="${esc(ex.notes)}" placeholder="Optional"></label>
     </div>
@@ -342,11 +369,11 @@ function bindExCards(week) {
     card.querySelector(".w-unit").onclick = () => {
       const next = exU() === "kg" ? "lb" : "kg";
       ex.unit = next === unit() ? null : next;
-      save(); render();
+      save(); render({ keepScroll: true });
     };
-    card.querySelector(".ex-del").onclick = () => { list.splice(xi, 1); save(); render(); };
-    card.querySelector(".ex-up").onclick = () => { if (xi > 0) { [list[xi - 1], list[xi]] = [list[xi], list[xi - 1]]; save(); render(); } };
-    card.querySelector(".ex-down").onclick = () => { if (xi < list.length - 1) { [list[xi + 1], list[xi]] = [list[xi], list[xi + 1]]; save(); render(); } };
+    card.querySelector(".ex-del").onclick = () => { list.splice(xi, 1); save(); render({ keepScroll: true }); };
+    card.querySelector(".ex-up").onclick = () => { if (xi > 0) { [list[xi - 1], list[xi]] = [list[xi], list[xi - 1]]; save(); render({ keepScroll: true }); } };
+    card.querySelector(".ex-down").onclick = () => { if (xi < list.length - 1) { [list[xi + 1], list[xi]] = [list[xi], list[xi + 1]]; save(); render({ keepScroll: true }); } };
   });
 }
 
@@ -447,7 +474,7 @@ function renderSessionEditor() {
   document.getElementById("sDate").onchange = e => { s.date = e.target.value || todayISO(); save(); render(); };
   document.getElementById("addEntry").onclick = () => {
     s.entries.push({ id: uid(), name: "", notes: "", sets: [{ weightKg: null, reps: null }] });
-    save(); render();
+    save(); render({ keepScroll: true });
   };
   $view.querySelectorAll(".card[data-ei]").forEach(card => {
     const en = s.entries[+card.dataset.ei];
@@ -456,19 +483,19 @@ function renderSessionEditor() {
     card.querySelector(".en-unit").onclick = () => {
       const next = (en.unit || unit()) === "kg" ? "lb" : "kg";
       en.unit = next === unit() ? null : next;
-      save(); render();
+      save(); render({ keepScroll: true });
     };
-    card.querySelector(".en-del").onclick = () => { s.entries.splice(+card.dataset.ei, 1); save(); render(); };
+    card.querySelector(".en-del").onclick = () => { s.entries.splice(+card.dataset.ei, 1); save(); render({ keepScroll: true }); };
     card.querySelector(".en-addset").onclick = () => {
       const last = en.sets[en.sets.length - 1];
       en.sets.push({ weightKg: last ? last.weightKg : null, reps: last ? last.reps : null });
-      save(); render();
+      save(); render({ keepScroll: true });
     };
     card.querySelectorAll(".set-row").forEach(rowEl => {
       const set = en.sets[+rowEl.dataset.si];
       rowEl.querySelector(".set-w").addEventListener("input", e => { set.weightKg = fromDisp(e.target.value, en.unit || unit()); save(); });
       rowEl.querySelector(".set-r").addEventListener("input", e => { set.reps = e.target.value === "" ? null : parseInt(e.target.value, 10); save(); });
-      rowEl.querySelector(".set-del").onclick = () => { en.sets.splice(+rowEl.dataset.si, 1); save(); render(); };
+      rowEl.querySelector(".set-del").onclick = () => { en.sets.splice(+rowEl.dataset.si, 1); save(); render({ keepScroll: true }); };
     });
   });
 }
