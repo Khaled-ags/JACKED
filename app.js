@@ -152,7 +152,14 @@ function render(opts = {}) {
   else if (route.tab === "progress") renderProgress();
   else renderSettings();
   updateExNames();
-  window.scrollTo(0, opts.keepScroll ? prevY : 0);
+  if (opts.keepScroll) {
+    window.scrollTo(0, prevY);
+    // re-apply after layout settles — some mobile browsers clamp scroll
+    // asynchronously right after a full innerHTML swap
+    requestAnimationFrame(() => window.scrollTo(0, prevY));
+  } else {
+    window.scrollTo(0, 0);
+  }
 }
 function updateExNames() {
   const names = new Set(DEFAULT_EXERCISES);
@@ -274,17 +281,26 @@ function renderProgramEditor() {
     week.days.splice(+b.dataset.deldaay, 1); save(); render();
   }));
   $view.querySelectorAll("[data-addex]").forEach(b => b.onclick = () => {
-    week.days[+b.dataset.addex].exercises.push({ id: uid(), name: "", weightKg: null, percent: null, sets: 3, reps: 8, rpe: null, notes: "" });
-    save(); render({ keepScroll: true });
+    const di = +b.dataset.addex;
+    const ex = { id: uid(), name: "", weightKg: null, percent: null, sets: 3, reps: 8, rpe: null, notes: "" };
+    week.days[di].exercises.push(ex);
+    save();
+    appendExercise(week, di, ex); // surgical insert — no full re-render, no scroll jump
   });
   $view.querySelectorAll(".ex-count-input").forEach(inp => {
     const commit = () => {
-      const list = week.days[+inp.dataset.di].exercises;
+      const di = +inp.dataset.di;
+      const list = week.days[di].exercises;
       const want = parseInt(inp.value, 10);
       // only ever grow: add blank exercises; never remove existing ones
       if (isFinite(want) && want > list.length) {
-        while (list.length < want) list.push({ id: uid(), name: "", weightKg: null, percent: null, sets: null, reps: null, rpe: null, notes: "" });
-        save(); render({ keepScroll: true });
+        const toAdd = want - list.length;
+        for (let k = 0; k < toAdd; k++) {
+          const ex = { id: uid(), name: "", weightKg: null, percent: null, sets: null, reps: null, rpe: null, notes: "" };
+          list.push(ex);
+          appendExercise(week, di, ex);
+        }
+        save();
       } else {
         inp.value = list.length; // reset display; lowering does nothing
       }
@@ -333,7 +349,26 @@ function exCardHTML(ex, di, xi) {
 }
 
 function bindExCards(week) {
-  $view.querySelectorAll(".ex-card").forEach(card => {
+  $view.querySelectorAll(".ex-card").forEach(card => bindOneExCard(card, week));
+}
+
+/* Append one exercise card to its day WITHOUT re-rendering the page, so
+   scroll position can't move (mobile browsers clamp scroll on full rebuilds). */
+function appendExercise(week, di, ex) {
+  const dayCard = $view.querySelector(`.day-card[data-day="${di}"]`);
+  if (!dayCard) return render({ keepScroll: true });
+  const addBtn = dayCard.querySelector("[data-addex]");
+  const xi = week.days[di].exercises.indexOf(ex);
+  const temp = document.createElement("div");
+  temp.innerHTML = exCardHTML(ex, di, xi);
+  const card = temp.firstElementChild;
+  addBtn.parentNode.insertBefore(card, addBtn);
+  bindOneExCard(card, week);
+  const chip = dayCard.querySelector(".ex-count-input");
+  if (chip) chip.value = week.days[di].exercises.length;
+}
+
+function bindOneExCard(card, week) {
     const di = +card.dataset.di, xi = +card.dataset.xi;
     const list = week.days[di].exercises;
     const ex = list[xi];
@@ -374,7 +409,6 @@ function bindExCards(week) {
     card.querySelector(".ex-del").onclick = () => { list.splice(xi, 1); save(); render({ keepScroll: true }); };
     card.querySelector(".ex-up").onclick = () => { if (xi > 0) { [list[xi - 1], list[xi]] = [list[xi], list[xi - 1]]; save(); render({ keepScroll: true }); } };
     card.querySelector(".ex-down").onclick = () => { if (xi < list.length - 1) { [list[xi + 1], list[xi]] = [list[xi], list[xi + 1]]; save(); render({ keepScroll: true }); } };
-  });
 }
 
 /* Create a session from a planned day */
