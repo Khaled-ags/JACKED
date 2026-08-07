@@ -23,7 +23,9 @@
     JACK<b>ED</b>
   </h1>
   <div class="header-actions">
-    <button id="unitToggle" class="chip" title="Switch between kg and lb">kg</button>
+    <div id="unitToggle" class="unit-toggle" role="button" tabindex="0" title="Switch weight unit (kg / lb)" aria-label="Switch weight unit">
+      <span data-u="kg">KG</span><span data-u="lb">LB</span>
+    </div>
     <button id="plateBtn" class="icon-btn" title="Plate calculator" aria-label="Plate calculator">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M2 12h2M20 12h2"/><rect x="4" y="7" width="3" height="10" rx="1"/><rect x="17" y="7" width="3" height="10" rx="1"/><path d="M7 12h10"/>

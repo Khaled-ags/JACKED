@@ -194,14 +194,14 @@ function renderProgramList() {
   document.getElementById("addProgram").onclick = () => {
     const p = { id: uid(), name: "New Program", weeks: [{ days: [{ name: "Day 1", exercises: [] }] }] };
     state.programs.push(p); save();
-    route.programId = p.id; route.weekIdx = 0; render();
+    route.programId = p.id; route.weekIdx = 0; route.openDays = new Set(); render();
   };
   const splitFile = document.getElementById("splitFile");
   document.getElementById("importSplitBtn").onclick = () => splitFile.click();
   splitFile.onchange = () => { if (splitFile.files[0]) importSplitFromImage(splitFile.files[0]); };
   $view.querySelectorAll("[data-open]").forEach(el => el.onclick = e => {
     if (e.target.closest("[data-del]")) return;
-    route.programId = el.dataset.open; route.weekIdx = 0; render();
+    route.programId = el.dataset.open; route.weekIdx = 0; route.openDays = new Set(); render();
   });
   $view.querySelectorAll("[data-del]").forEach(el => el.onclick = () => {
     confirmModal("Delete program?", "This removes the plan. Logged workout history is kept.", () => {
@@ -219,23 +219,38 @@ function renderProgramEditor() {
   if (route.weekIdx >= p.weeks.length) route.weekIdx = Math.max(0, p.weeks.length - 1);
   const week = p.weeks[route.weekIdx];
 
+  // Which day sections are expanded. This Set persists across in-place
+  // re-renders (unit toggle, add exercise) so those keep sections as-is; it is
+  // reset to empty (all collapsed) only at true entry points — opening a
+  // program, switching week, importing — see the handlers below.
+  if (!route.openDays) route.openDays = new Set();
+  const openDays = route.openDays;
+
   const tabs = p.weeks.map((_, i) =>
     `<button class="${i === route.weekIdx ? "active" : ""}" data-week="${i}">W${i + 1}</button>`).join("") +
     `<button data-addweek="1" title="Add week">+</button>`;
 
   const days = week.days.map((day, di) => `
-    <div class="card day-card open" data-day="${di}">
+    <div class="card day-card ${openDays.has(di) ? "open" : ""}" data-day="${di}">
       <div class="day-head">
-        <span class="caret">▶</span>
-        <input class="input grow day-name" data-di="${di}" value="${esc(day.name)}">
+        <div class="day-head-label">
+          <span class="day-idx">Day ${di + 1}</span>
+          <input class="day-name" data-di="${di}" value="${esc(day.name)}" placeholder="Name this day">
+        </div>
         <span class="ex-count" title="Number of exercises — type a bigger number to add blank ones">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1.5 12h1.5M21 12h1.5"/><rect x="4" y="7.5" width="2.6" height="9" rx="1"/><rect x="17.4" y="7.5" width="2.6" height="9" rx="1"/><path d="M6.6 12h10.8"/></svg>
           <input class="ex-count-input" data-di="${di}" type="number" inputmode="numeric" min="0" value="${day.exercises.length}" aria-label="Exercise count">
         </span>
+        <span class="caret" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </span>
       </div>
       <div class="day-body">
         ${day.exercises.map((ex, xi) => exCardHTML(ex, di, xi)).join("")}
-        <button class="btn block" data-addex="${di}" style="margin-top:10px">+ Add exercise</button>
+        <button class="btn block add-ex-btn" data-addex="${di}" style="margin-top:10px">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add exercise
+        </button>
         <div class="row" style="margin-top:10px">
           <button class="btn primary grow" data-logday="${di}">Log workout</button>
           <button class="btn danger" data-deldaay="${di}" title="Delete day">Delete day</button>
@@ -258,8 +273,8 @@ function renderProgramEditor() {
 
   document.getElementById("backBtn").onclick = () => { route.programId = null; render(); };
   bindValue(document.getElementById("progName"), v => { p.name = v || "Program"; });
-  $view.querySelectorAll("[data-week]").forEach(b => b.onclick = () => { route.weekIdx = +b.dataset.week; render(); });
-  $view.querySelector("[data-addweek]").onclick = () => { p.weeks.push({ days: [{ name: "Day 1", exercises: [] }] }); route.weekIdx = p.weeks.length - 1; save(); render(); };
+  $view.querySelectorAll("[data-week]").forEach(b => b.onclick = () => { route.weekIdx = +b.dataset.week; route.openDays = new Set(); render(); });
+  $view.querySelector("[data-addweek]").onclick = () => { p.weeks.push({ days: [{ name: "Day 1", exercises: [] }] }); route.weekIdx = p.weeks.length - 1; route.openDays = new Set(); save(); render(); };
   document.getElementById("copyWeek").onclick = () => {
     const prev = p.weeks[route.weekIdx - 1];
     p.weeks[route.weekIdx] = JSON.parse(JSON.stringify(prev));
@@ -268,13 +283,17 @@ function renderProgramEditor() {
   };
   document.getElementById("addDay").onclick = () => { week.days.push({ name: `Day ${week.days.length + 1}`, exercises: [] }); save(); render(); };
   document.getElementById("delWeek").onclick = () => confirmModal("Delete this week?", "", () => {
-    p.weeks.splice(route.weekIdx, 1); route.weekIdx = Math.max(0, route.weekIdx - 1); save(); render();
+    p.weeks.splice(route.weekIdx, 1); route.weekIdx = Math.max(0, route.weekIdx - 1); route.openDays = new Set(); save(); render();
   });
 
   $view.querySelectorAll(".day-head").forEach(h => h.onclick = e => {
-    if (e.target.closest("input,button")) return;
-    h.closest(".day-card").classList.toggle("open");
-    h.closest(".day-card").querySelector(".day-body").classList.toggle("hidden");
+    if (e.target.closest("input,button,.ex-count")) return;
+    const cardEl = h.closest(".day-card");
+    const di = +cardEl.dataset.day;
+    // CSS hides .day-body when the card lacks .open; keep openDays in sync so
+    // an in-place re-render (e.g. unit toggle) preserves this section's state
+    const nowOpen = cardEl.classList.toggle("open");
+    if (nowOpen) openDays.add(di); else openDays.delete(di);
   });
   $view.querySelectorAll(".day-name").forEach(inp => bindValue(inp, v => { week.days[+inp.dataset.di].name = v; }));
   $view.querySelectorAll("[data-deldaay]").forEach(b => b.onclick = () => confirmModal("Delete day?", "", () => {
@@ -322,11 +341,12 @@ function exCardHTML(ex, di, xi) {
   const noMax = ex.percent != null && lift && !state.maxes[lift];
   const exU = ex.unit || unit();
   return `<div class="ex-card ${auto ? "autocalc" : ""}" data-di="${di}" data-xi="${xi}">
-    <div class="row">
-      <input class="input grow ex-f" data-f="name" list="exNames" placeholder="Exercise name" value="${esc(ex.name)}">
-      <button class="btn small ex-up" title="Move up">↑</button>
-      <button class="btn small ex-down" title="Move down">↓</button>
-      <button class="btn small danger ex-del">✕</button>
+    <div class="row ex-head">
+      <span class="ex-num">${xi + 1}</span>
+      <input class="input grow ex-f ex-name" data-f="name" list="exNames" placeholder="Exercise name" value="${esc(ex.name)}">
+      <button class="btn small ex-up" title="Move up" aria-label="Move up">↑</button>
+      <button class="btn small ex-down" title="Move down" aria-label="Move down">↓</button>
+      <button class="btn small danger ex-del" title="Remove" aria-label="Remove">✕</button>
     </div>
     <div class="ex-grid">
       <label class="field weightfield">Weight
@@ -341,7 +361,7 @@ function exCardHTML(ex, di, xi) {
       <label class="field">Reps<input class="input ex-f" data-f="reps" type="number" inputmode="numeric" value="${ex.reps ?? ""}"></label>
       <label class="field">%1RM<input class="input ex-f" data-f="percent" type="number" inputmode="decimal" value="${ex.percent ?? ""}" placeholder="—"></label>
       <label class="field">RPE<input class="input ex-f" data-f="rpe" type="number" step="0.5" inputmode="decimal" value="${ex.rpe ?? ""}" placeholder="—"></label>
-      <label class="field wide">Notes<input class="input ex-f" data-f="notes" value="${esc(ex.notes)}" placeholder="Optional"></label>
+      <label class="field wide">Description / notes<textarea class="input ex-f ex-notes" data-f="notes" rows="2" placeholder="Cues, tempo, setup… (multiple lines OK)">${esc(ex.notes)}</textarea></label>
     </div>
     ${noMax ? `<div class="badge warn" style="margin-top:8px">Set your ${lift} 1RM in Settings to auto-calc</div>` : ""}
     ${auto ? `<div class="muted" style="margin-top:6px">Auto: ${ex.percent}% of ${fmtW(state.maxes[lift])} 1RM</div>` : ""}
@@ -795,7 +815,7 @@ async function importSplitFromImage(file) {
       }],
     };
     state.programs.push(program); save();
-    route.tab = "programs"; route.programId = program.id; route.weekIdx = 0; render();
+    route.tab = "programs"; route.programId = program.id; route.weekIdx = 0; route.openDays = new Set(); render();
     toast(`Imported ${count} exercise${count !== 1 ? "s" : ""} — check names and fill any blanks`);
   } catch (err) {
     console.error(err);
@@ -1017,7 +1037,9 @@ function bindValue(input, setter) {
   input.addEventListener("input", () => { setter(input.value); save(); });
 }
 function applyTheme() { document.documentElement.dataset.theme = state.settings.theme; }
-function syncHeader() { document.getElementById("unitToggle").textContent = unit(); }
+function syncHeader() {
+  document.querySelectorAll("#unitToggle [data-u]").forEach(s => s.classList.toggle("active", s.dataset.u === unit()));
+}
 
 /* ---------------- Init ---------------- */
 document.querySelectorAll(".nav-btn").forEach(b => b.onclick = () => {
@@ -1025,11 +1047,15 @@ document.querySelectorAll(".nav-btn").forEach(b => b.onclick = () => {
   route.programId = null; route.sessionId = null;
   render();
 });
-document.getElementById("unitToggle").onclick = () => {
+const unitToggleEl = document.getElementById("unitToggle");
+const flipUnit = () => {
   state.settings.unit = unit() === "kg" ? "lb" : "kg";
-  save(); syncHeader(); render();
+  save(); syncHeader();
+  render({ keepScroll: true }); // preserve scroll AND day expand/collapse state
   toast(`Default unit: ${unit()} (per-exercise overrides kept)`);
 };
+unitToggleEl.onclick = flipUnit;
+unitToggleEl.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flipUnit(); } });
 document.getElementById("plateBtn").onclick = openPlateCalc;
 
 applyTheme();
