@@ -15,19 +15,35 @@
   --speed: .14s;
 }
 
-/* IRON — gym rubber floor, chalk, 15kg plate yellow (default) */
+/* POWER (id "iron") — gym rubber floor, chalk, 15kg plate yellow (default) */
 [data-theme="iron"] {
   --ground: #191714; --panel: #211e19; --sunk: #100e0c;
   --rule: #35302a; --rule-hard: #4a4238;
-  --ink: #f3efe4; --muted: #978f7e;
+  --ink: #f3efe4; --muted: #a29a88;
   --accent: #f5c518; --accent-ink: #17150f; --accent2: #7fb2d9;
   --danger: #e2564a; --success: #56b869; --warn: #f5a623;
+}
+/* H2O — black, race red, white. Maximum contrast. */
+[data-theme="h2o"] {
+  --ground: #0a0a0a; --panel: #151515; --sunk: #000000;
+  --rule: #282828; --rule-hard: #414141;
+  --ink: #ffffff; --muted: #949494;
+  --accent: #e10600; --accent-ink: #ffffff; --accent2: #ffffff;
+  --danger: #ff5545; --success: #35c46b; --warn: #ffb020;
+}
+/* PURE — black, ice blue, white. Calm and clinical. */
+[data-theme="pure"] {
+  --ground: #090c10; --panel: #131920; --sunk: #05080b;
+  --rule: #222b36; --rule-hard: #36434f;
+  --ink: #f4f8fb; --muted: #91a0b1;
+  --accent: #4fc3f7; --accent-ink: #04202c; --accent2: #ffffff;
+  --danger: #ff6152; --success: #4ade80; --warn: #fbbf24;
 }
 /* CHALK — manila logbook page, pencil ink, red grease pencil */
 [data-theme="chalk"] {
   --ground: #e8e3d6; --panel: #f5f1e6; --sunk: #ded8c8;
   --rule: #c7bfa9; --rule-hard: #a89e84;
-  --ink: #1d1a14; --muted: #6f6857;
+  --ink: #1d1a14; --muted: #625b4a;
   --accent: #c0392b; --accent-ink: #fdfaf2; --accent2: #2c5f8a;
   --danger: #a5281c; --success: #2c7a45; --warn: #a8720c;
 }
@@ -35,7 +51,7 @@
 [data-theme="neon"] {
   --ground: #0d0616; --panel: #170b26; --sunk: #060210;
   --rule: #3d2361; --rule-hard: #57318a;
-  --ink: #f2e7ff; --muted: #a48cc6;
+  --ink: #f2e7ff; --muted: #b6a1d6;
   --accent: #ff2fb3; --accent-ink: #14041c; --accent2: #b465ff;
   --danger: #ff5470; --success: #2fffb0; --warn: #ffd23e;
   --glow: 0 0 12px;
@@ -44,7 +60,7 @@
 [data-theme="terminal"] {
   --ground: #030b03; --panel: #07140a; --sunk: #010601;
   --rule: #14522b; --rule-hard: #1d7a40;
-  --ink: #4dff7c; --muted: #2c9e52;
+  --ink: #4dff7c; --muted: #36bd63;
   --accent: #22ff66; --accent-ink: #021206; --accent2: #7dffa8;
   --danger: #ff6b4d; --success: #22ff66; --warn: #e8ff4d;
   --glow: 0 0 8px;
@@ -55,7 +71,7 @@
 [data-theme="synthwave"] {
   --ground: #120b2a; --panel: #1b1140; --sunk: #0a0620;
   --rule: #3a2d78; --rule-hard: #52409f;
-  --ink: #e8ecff; --muted: #9a94c9;
+  --ink: #e8ecff; --muted: #aaa4d8;
   --accent: #22d3ee; --accent-ink: #05141a; --accent2: #f472b6;
   --danger: #fb6a8f; --success: #34e3b0; --warn: #fbbf24;
   --glow: 0 0 10px;
@@ -97,17 +113,17 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
   background: repeating-linear-gradient(115deg, var(--rule-hard) 0 1px, transparent 1px 4px);
   opacity: .8; pointer-events: none;
 }
+/* original wordmark: barbell icon + JACK/ED, on its own type stack so it
+   stays put no matter what the display face is */
 .logo {
-  margin: 0; display: flex; align-items: baseline; gap: 0;
-  font-family: var(--font-display); font-size: 1.65rem; font-weight: 400;
-  letter-spacing: .04em; text-transform: uppercase; line-height: 1;
+  margin: 0; display: flex; align-items: center; gap: 9px;
+  font-family: "Bahnschrift", "Arial Narrow", "Helvetica Neue", system-ui, sans-serif;
+  font-size: 1.45rem; font-weight: 800; line-height: 1;
+  letter-spacing: .16em; text-transform: uppercase;
+  text-shadow: var(--glow) var(--accent);
 }
-.logo .mark {
-  background: var(--accent); color: var(--accent-ink);
-  padding: 3px 7px 2px; margin-right: 5px;
-  box-shadow: var(--glow) var(--accent);
-}
-.logo .rest { color: var(--ink); padding-top: 2px; }
+.logo svg { color: var(--accent); flex: none; }
+.logo b { color: var(--accent); font-weight: inherit; }
 .header-actions { display: flex; gap: 8px; align-items: center; }
 
 /* hard-edged KG|LB switch — a physical selector, not a pill */

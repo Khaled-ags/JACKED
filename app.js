@@ -4,8 +4,11 @@
 /* ---------------- Constants & state ---------------- */
 const STORE_KEY = "jacked_v1";
 const KG_PER_LB = 0.45359237;
+/* id stays stable so saved settings keep working; `name` is what's shown */
 const THEMES = [
-  { id: "iron",      name: "Iron",      colors: ["#191714", "#f5c518", "#f3efe4"] },
+  { id: "iron",      name: "Power",     colors: ["#191714", "#f5c518", "#f3efe4"] },
+  { id: "h2o",       name: "H2O",       colors: ["#0a0a0a", "#e10600", "#ffffff"] },
+  { id: "pure",      name: "Pure",      colors: ["#090c10", "#4fc3f7", "#f4f8fb"] },
   { id: "chalk",     name: "Chalk",     colors: ["#e8e3d6", "#c0392b", "#1d1a14"] },
   { id: "neon",      name: "Neon City", colors: ["#0d0616", "#ff2fb3", "#b465ff"] },
   { id: "terminal",  name: "Terminal",  colors: ["#030b03", "#22ff66", "#4dff7c"] },
@@ -208,7 +211,11 @@ function renderProgramList() {
   splitFile.onchange = () => { if (splitFile.files[0]) importSplitFromImage(splitFile.files[0]); };
   $view.querySelectorAll("[data-open]").forEach(el => el.onclick = e => {
     if (e.target.closest("[data-del]")) return;
-    route.programId = el.dataset.open; route.weekIdx = 0; route.openDays = new Set(); render();
+    route.programId = el.dataset.open;
+    // land on the most recent week — that's the one you're training
+    const prog = state.programs.find(p => p.id === route.programId);
+    route.weekIdx = prog ? Math.max(0, prog.weeks.length - 1) : 0;
+    route.openDays = new Set(); render();
   });
   $view.querySelectorAll("[data-del]").forEach(el => el.onclick = () => {
     confirmModal("Delete program?", "This removes the plan. Logged workout history is kept.", () => {
