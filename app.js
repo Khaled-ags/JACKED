@@ -5,8 +5,8 @@
 const STORE_KEY = "jacked_v1";
 const KG_PER_LB = 0.45359237;
 const THEMES = [
-  { id: "iron",      name: "Iron",      colors: ["#101318", "#e8483a", "#edf0f5"] },
-  { id: "chalk",     name: "Chalk",     colors: ["#f2f1ed", "#c9382b", "#17191d"] },
+  { id: "iron",      name: "Iron",      colors: ["#191714", "#f5c518", "#f3efe4"] },
+  { id: "chalk",     name: "Chalk",     colors: ["#e8e3d6", "#c0392b", "#1d1a14"] },
   { id: "neon",      name: "Neon City", colors: ["#0d0616", "#ff2fb3", "#b465ff"] },
   { id: "terminal",  name: "Terminal",  colors: ["#030b03", "#22ff66", "#4dff7c"] },
   { id: "synthwave", name: "Synthwave", colors: ["#120b2a", "#22d3ee", "#f472b6"] },
@@ -23,6 +23,13 @@ const PLATES = {
   lb: [45, 35, 25, 10, 5, 2.5],
 };
 const BARS = { kg: [20, 15, 10], lb: [45, 35, 15] };
+/* IWF/IPF calibrated plate colours — [face, ink] */
+const PLATE_COLORS = {
+  kg: { 25: ["#cf2027", "#fff"], 20: ["#1f4fa8", "#fff"], 15: ["#f2c200", "#1a1608"], 10: ["#1a8a45", "#fff"],
+        5: ["#eae6da", "#1a1608"], 2.5: ["#cf2027", "#fff"], 1.25: ["#c3c7cc", "#1a1608"] },
+  lb: { 45: ["#1f4fa8", "#fff"], 35: ["#f2c200", "#1a1608"], 25: ["#1a8a45", "#fff"],
+        10: ["#eae6da", "#1a1608"], 5: ["#c3c7cc", "#1a1608"], 2.5: ["#c3c7cc", "#1a1608"] },
+};
 
 let state = loadState();
 let route = { tab: "programs", programId: null, weekIdx: 0, sessionId: null, progressEx: null };
@@ -233,8 +240,8 @@ function renderProgramEditor() {
   const days = week.days.map((day, di) => `
     <div class="card day-card ${openDays.has(di) ? "open" : ""}" data-day="${di}">
       <div class="day-head">
+        <span class="day-idx">${String(di + 1).padStart(2, "0")}</span>
         <div class="day-head-label">
-          <span class="day-idx">Day ${di + 1}</span>
           <input class="day-name" data-di="${di}" value="${esc(day.name)}" placeholder="Name this day">
         </div>
         <span class="ex-count" title="Number of exercises — type a bigger number to add blank ones">
@@ -633,14 +640,14 @@ function chartSVG(points, u) {
   const gridLines = [];
   for (let i = 0; i <= 4; i++) {
     const v = lo + (hi - lo) * i / 4, yy = y(v);
-    gridLines.push(`<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="var(--border)" stroke-dasharray="4 4"/>
+    gridLines.push(`<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="var(--rule)" stroke-dasharray="4 4"/>
       <text x="${padL - 6}" y="${yy + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${Math.round(v)}</text>`);
   }
   const line = (key, color, area) => {
     const pts = points.map((p, i) => `${x(i)},${y(disp(p[key]))}`).join(" ");
     const dots = points.map((p, i) => {
       const last = i === points.length - 1;
-      return `<circle cx="${x(i)}" cy="${y(disp(p[key]))}" r="${last ? 5 : 3.5}" fill="${color}" ${last ? `stroke="var(--bg2)" stroke-width="2"` : ""}/>`;
+      return `<circle cx="${x(i)}" cy="${y(disp(p[key]))}" r="${last ? 5 : 3.5}" fill="${color}" ${last ? `stroke="var(--panel)" stroke-width="2"` : ""}/>`;
     }).join("");
     const fill = area
       ? `<polygon points="${x(0)},${H - padB} ${pts} ${x(points.length - 1)},${H - padB}" fill="${color}" opacity="0.12"/>`
@@ -929,7 +936,10 @@ function openPlateCalc() {
     const loaded = target - perSide * 2;
     out.innerHTML = `
       <div class="muted" style="margin:6px 0">Per side:</div>
-      <div class="plate-result">${result.map(r => `<div class="plate">${r.p}<small>× ${r.n}</small></div>`).join("") || `<span class="muted">Empty bar</span>`}</div>
+      <div class="plate-result">${result.map(r => {
+        const [face, ink] = (PLATE_COLORS[u] || {})[r.p] || ["#8a8f96", "#fff"];
+        return `<div class="plate" style="--plate-c:${face};--plate-ink:${ink}">${r.p}<small>× ${r.n}</small></div>`;
+      }).join("") || `<span class="muted">Empty bar</span>`}</div>
       ${perSide > 0.01 ? `<div class="badge warn" style="margin-top:10px">Closest load: ${Math.round(loaded * 10) / 10} ${u} (${Math.round(perSide * 2 * 100) / 100} ${u} short)</div>` : ""}`;
   };
   document.getElementById("pcTarget").addEventListener("input", calc);
@@ -1021,11 +1031,11 @@ function toast(msg, isError) {
   if (!el) {
     el = document.createElement("div");
     el.id = "toast";
-    el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));z-index:60;padding:10px 18px;border-radius:10px;font-weight:700;font-size:.9rem;box-shadow:0 6px 20px rgba(0,0,0,.4);transition:opacity .3s";
+    el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));z-index:60;padding:9px 16px;border-radius:2px;font-weight:700;font-size:.86rem;letter-spacing:.02em;box-shadow:0 3px 0 rgba(0,0,0,.45);transition:opacity .3s";
     document.body.appendChild(el);
   }
   el.style.background = isError ? "var(--danger)" : "var(--accent)";
-  el.style.color = "var(--accent-text)";
+  el.style.color = "var(--accent-ink)";
   el.textContent = msg;
   el.style.opacity = "1";
   clearTimeout(toastTimeout);
