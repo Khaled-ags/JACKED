@@ -4,15 +4,18 @@
 /* ---------------- Constants & state ---------------- */
 const STORE_KEY = "jacked_v1";
 const KG_PER_LB = 0.45359237;
-/* id stays stable so saved settings keep working; `name` is what's shown */
+/* id stays stable so saved settings keep working; `name` is what's shown.
+   "auto" is not a palette — it follows the phone's light/dark setting. */
+const AUTO_DARK = "h2o", AUTO_LIGHT = "chalk";
 const THEMES = [
-  { id: "iron",      name: "Power",     colors: ["#191714", "#f5c518", "#f3efe4"] },
+  { id: "auto",      name: "Auto",      colors: ["#0a0a0a", "#e10600", "#f0efea"] },
   { id: "h2o",       name: "H2O",       colors: ["#0a0a0a", "#e10600", "#ffffff"] },
-  { id: "pure",      name: "Pure",      colors: ["#090c10", "#4fc3f7", "#f4f8fb"] },
-  { id: "chalk",     name: "Chalk",     colors: ["#e8e3d6", "#c0392b", "#1d1a14"] },
-  { id: "neon",      name: "Neon City", colors: ["#0d0616", "#ff2fb3", "#b465ff"] },
-  { id: "terminal",  name: "Terminal",  colors: ["#030b03", "#22ff66", "#4dff7c"] },
-  { id: "synthwave", name: "Synthwave", colors: ["#120b2a", "#22d3ee", "#f472b6"] },
+  { id: "iron",      name: "Power",     colors: ["#100f0c", "#f5c518", "#f6f2e9"] },
+  { id: "pure",      name: "Pure",      colors: ["#070a0e", "#4fc3f7", "#f4f8fb"] },
+  { id: "chalk",     name: "Chalk",     colors: ["#f0efea", "#c0392b", "#16181a"] },
+  { id: "neon",      name: "Neon City", colors: ["#0b0514", "#ff2fb3", "#b465ff"] },
+  { id: "terminal",  name: "Terminal",  colors: ["#020802", "#22ff66", "#6bff92"] },
+  { id: "synthwave", name: "Synthwave", colors: ["#0f0924", "#22d3ee", "#f472b6"] },
 ];
 const BARBELL_SVG = `<svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 12h1.5M21 12h1.5"/><rect x="4" y="6" width="3" height="12" rx="1"/><rect x="8" y="8" width="2.4" height="8" rx="1"/><rect x="17" y="6" width="3" height="12" rx="1"/><rect x="13.6" y="8" width="2.4" height="8" rx="1"/><path d="M10.4 12h3.2"/></svg>`;
 const DEFAULT_EXERCISES = [
@@ -35,6 +38,7 @@ const PLATE_COLORS = {
 };
 
 let state = loadState();
+save(); // persist any migration loadState applied, so it only runs once
 let route = { tab: "programs", programId: null, weekIdx: 0, sessionId: null, progressEx: null };
 
 function loadState() {
@@ -46,6 +50,8 @@ function loadState() {
       s.maxes = Object.assign({ squat: null, bench: null, deadlift: null }, s.maxes);
       s.programs = s.programs || [];
       s.sessions = s.sessions || [];
+      // one-time move to the new default palette; re-picking a theme sticks
+      if (!s.settings.themeV2) { s.settings.theme = "h2o"; s.settings.themeV2 = true; }
       return s;
     }
   } catch (e) { console.error("Failed to load saved data", e); }
@@ -58,7 +64,7 @@ function loadState() {
   };
 }
 function defaultSettings() {
-  return { unit: "kg", theme: "iron", restSec: 120 };
+  return { unit: "kg", theme: "h2o", restSec: 120 };
 }
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -1053,7 +1059,18 @@ function toast(msg, isError) {
 function bindValue(input, setter) {
   input.addEventListener("input", () => { setter(input.value); save(); });
 }
-function applyTheme() { document.documentElement.dataset.theme = state.settings.theme; }
+const lightQuery = window.matchMedia("(prefers-color-scheme: light)");
+function applyTheme() {
+  const t = state.settings.theme;
+  document.documentElement.dataset.theme =
+    t === "auto" ? (lightQuery.matches ? AUTO_LIGHT : AUTO_DARK) : t;
+}
+/* keep Auto in step: while the app is open, and again on return — phones
+   usually flip to dark at sunset while the app is in the background */
+lightQuery.addEventListener("change", () => { if (state.settings.theme === "auto") applyTheme(); });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.settings.theme === "auto") applyTheme();
+});
 function syncHeader() {
   document.querySelectorAll("#unitToggle [data-u]").forEach(s => s.classList.toggle("active", s.dataset.u === unit()));
 }
