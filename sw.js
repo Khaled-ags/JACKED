@@ -1,4 +1,4 @@
-﻿/* JACKED service worker â€” cache-first app shell */
+﻿/* JACKED service worker — cache-first app shell */
 const CACHE = "jacked-v7";
 const ASSETS = ["./", "index.html", "styles.css", "app.js", "manifest.json", "icon-192.png", "icon-512.png"];
 
