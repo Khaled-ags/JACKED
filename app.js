@@ -194,6 +194,9 @@ function renderProgramList() {
           <div class="card-title">${esc(p.name)}</div>
           <div class="muted">${p.weeks.length} week${p.weeks.length !== 1 ? "s" : ""} · ${days} day${days !== 1 ? "s" : ""}</div>
         </div>
+        <button class="btn small" data-share="${p.id}" title="Share this split" aria-label="Share this split">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        </button>
         <button class="btn small danger" data-del="${p.id}">Delete</button>
       </div>
     </div>`;
@@ -204,8 +207,12 @@ function renderProgramList() {
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
       Import split from screenshot
     </button>
+    <button class="btn block" id="pasteShareBtn" style="margin-bottom:12px">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      Add a shared split
+    </button>
     <input type="file" id="splitFile" accept="image/*" class="hidden">
-    ${cards || `<div class="empty">${BARBELL_SVG}<br>No programs yet.<br>Tap <strong>+</strong> to build one, or import a screenshot of your split.</div>`}
+    ${cards || `<div class="empty">${BARBELL_SVG}<br>No programs yet.<br>Tap <strong>+</strong> to build one, import a screenshot,<br>or paste a split a friend shared.</div>`}
     <button class="fab-add" id="addProgram">+</button>`;
   document.getElementById("addProgram").onclick = () => {
     const p = { id: uid(), name: "New Program", weeks: [{ days: [{ name: "Day 1", exercises: [] }] }] };
@@ -214,9 +221,15 @@ function renderProgramList() {
   };
   const splitFile = document.getElementById("splitFile");
   document.getElementById("importSplitBtn").onclick = () => splitFile.click();
+  document.getElementById("pasteShareBtn").onclick = openPasteShareModal;
   splitFile.onchange = () => { if (splitFile.files[0]) importSplitFromImage(splitFile.files[0]); };
+  $view.querySelectorAll("[data-share]").forEach(el => el.onclick = e => {
+    e.stopPropagation();
+    const p = state.programs.find(x => x.id === el.dataset.share);
+    if (p) openShareModal(p);
+  });
   $view.querySelectorAll("[data-open]").forEach(el => el.onclick = e => {
-    if (e.target.closest("[data-del]")) return;
+    if (e.target.closest("[data-del],[data-share]")) return;
     route.programId = el.dataset.open;
     // land on the most recent week — that's the one you're training
     const prog = state.programs.find(p => p.id === route.programId);
@@ -282,6 +295,9 @@ function renderProgramEditor() {
     <div class="row" style="margin-bottom:10px">
       <button class="btn small" id="backBtn">← Back</button>
       <input class="input grow" id="progName" value="${esc(p.name)}" style="font-weight:800">
+      <button class="btn small" id="shareProgBtn" title="Share this split" aria-label="Share this split">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+      </button>
     </div>
     <div class="week-tabs">${tabs}</div>
     <div class="row" style="margin-bottom:10px; flex-wrap:wrap">
@@ -292,6 +308,7 @@ function renderProgramEditor() {
     ${days || `<div class="empty">No days in this week. Tap <strong>+ Day</strong>.</div>`}`;
 
   document.getElementById("backBtn").onclick = () => { route.programId = null; render(); };
+  document.getElementById("shareProgBtn").onclick = () => openShareModal(p);
   bindValue(document.getElementById("progName"), v => { p.name = v || "Program"; });
   $view.querySelectorAll("[data-week]").forEach(b => b.onclick = () => { route.weekIdx = +b.dataset.week; route.openDays = new Set(); render(); });
   $view.querySelector("[data-addweek]").onclick = () => { p.weeks.push({ days: [{ name: "Day 1", exercises: [] }] }); route.weekIdx = p.weeks.length - 1; route.openDays = new Set(); save(); render(); };
@@ -923,6 +940,208 @@ function parseSplitText(text) {
   return withEx;
 }
 
+/* ---------------- Sharing splits ----------------
+   A split travels inside the URL hash: compact JSON -> deflate -> base64url.
+   No server, no account. The hash never leaves the recipient's browser. */
+const SHARE_LIMITS = { weeks: 52, days: 14, ex: 60, name: 120, notes: 2000 };
+
+function b64urlEncode(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDecode(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function encodeShare(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  if (typeof CompressionStream === "function") {
+    try {
+      const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+      const packed = new Uint8Array(await new Response(stream).arrayBuffer());
+      return "2" + b64urlEncode(packed);   // 2 = deflated
+    } catch { /* fall through to plain */ }
+  }
+  return "1" + b64urlEncode(bytes);        // 1 = plain
+}
+async function decodeShare(code) {
+  const tag = code[0];
+  let bytes = b64urlDecode(code.slice(1));
+  if (tag === "2") {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  } else if (tag !== "1") throw new Error("unknown share format");
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+/* program -> compact payload (short keys, empty fields dropped) */
+function programToShare(p, includeWeights) {
+  return {
+    v: 1,
+    n: p.name,
+    w: p.weeks.map(week => week.days.map(d => {
+      const day = { n: d.name };
+      const list = d.exercises.filter(e => e.name || e.sets != null || e.reps != null).map(e => {
+        const o = { n: e.name || "" };
+        if (e.sets != null) o.s = e.sets;
+        if (e.reps != null) o.r = e.reps;
+        if (includeWeights && e.weightKg != null) o.kg = Math.round(e.weightKg * 100) / 100;
+        if (e.percent != null) o.p = e.percent;
+        if (e.rpe != null) o.rpe = e.rpe;
+        if (e.unit) o.u = e.unit;
+        if (e.notes) o.o = e.notes;
+        return o;
+      });
+      if (list.length) day.e = list;
+      return day;
+    })),
+  };
+}
+
+/* Rebuild a program from an UNTRUSTED payload: only known fields, coerced
+   types, capped sizes. Anything unexpected is dropped rather than trusted. */
+function sanitizeSharedProgram(raw) {
+  if (!raw || typeof raw !== "object") throw new Error("not a split");
+  const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
+  const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : null; };
+  const weeksRaw = Array.isArray(raw.w) ? raw.w.slice(0, SHARE_LIMITS.weeks) : [];
+  const weeks = weeksRaw.map(daysRaw => ({
+    days: (Array.isArray(daysRaw) ? daysRaw.slice(0, SHARE_LIMITS.days) : []).map(d => ({
+      name: str(d && d.n, SHARE_LIMITS.name) || "Day",
+      exercises: (Array.isArray(d && d.e) ? d.e.slice(0, SHARE_LIMITS.ex) : []).map(e => ({
+        id: uid(),
+        name: str(e && e.n, SHARE_LIMITS.name),
+        weightKg: num(e && e.kg, 0, 2000),
+        percent: num(e && e.p, 0, 200),
+        sets: num(e && e.s, 1, 99),
+        reps: num(e && e.r, 1, 999),
+        rpe: num(e && e.rpe, 0, 10),
+        unit: e && (e.u === "kg" || e.u === "lb") ? e.u : null,
+        notes: str(e && e.o, SHARE_LIMITS.notes),
+      })),
+    })),
+  }));
+  if (!weeks.length) throw new Error("empty split");
+  return { id: uid(), name: str(raw.n, SHARE_LIMITS.name) || "Shared Split", weeks };
+}
+
+function shareStats(p) {
+  const days = p.weeks.reduce((a, w) => a + w.days.length, 0);
+  const ex = p.weeks.reduce((a, w) => a + w.days.reduce((b, d) => b + d.exercises.filter(e => e.name).length, 0), 0);
+  return { weeks: p.weeks.length, days, ex };
+}
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+function openShareModal(p) {
+  const st = shareStats(p);
+  showModal(`
+    <h3>Share split</h3>
+    <div class="muted" style="margin-bottom:12px">
+      <strong style="color:var(--ink)">${esc(p.name)}</strong><br>
+      ${plural(st.weeks, "week")} · ${plural(st.days, "day")} · ${plural(st.ex, "exercise")}
+    </div>
+    <label class="check-row">
+      <input type="checkbox" id="shWeights" checked>
+      <span>Include my working weights<br><small class="muted">Off = exercises, sets and reps only</small></span>
+    </label>
+    <input class="input" id="shLink" readonly value="Building link…" style="margin:12px 0 4px; font-size:.8rem">
+    <div class="muted" id="shSize"></div>
+    <button class="btn primary block" id="shSend" style="margin-top:12px">Send split</button>
+    <button class="btn block" id="shCopy" style="margin-top:8px">Copy link</button>`);
+
+  const linkEl = document.getElementById("shLink");
+  const sizeEl = document.getElementById("shSize");
+  let link = "";
+
+  const build = async () => {
+    linkEl.value = "Building link…";
+    const code = await encodeShare(programToShare(p, document.getElementById("shWeights").checked));
+    link = `${location.origin}${location.pathname}#s=${code}`;
+    linkEl.value = link;
+    sizeEl.textContent = link.length > 8000
+      ? "This split is very large — if the link breaks in chat, send it as a file backup instead."
+      : "Anyone who opens this link can add the split to their own JACKED.";
+  };
+  build();
+  document.getElementById("shWeights").onchange = build;
+
+  document.getElementById("shSend").onclick = async () => {
+    if (!link) return;
+    if (navigator.share) {
+      try { await navigator.share({ title: `${p.name} — JACKED split`, text: `Here's my ${p.name} split:`, url: link }); return; }
+      catch (err) { if (err && err.name === "AbortError") return; }
+    }
+    copyShareLink(link, linkEl);
+  };
+  document.getElementById("shCopy").onclick = () => copyShareLink(link, linkEl);
+}
+
+async function copyShareLink(link, inputEl) {
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast("Link copied — paste it to a friend");
+  } catch {
+    inputEl.focus(); inputEl.select();
+    toast("Link selected — press copy", true);
+  }
+}
+
+/* someone opened a share link */
+function promptImportShared(prog) {
+  const st = shareStats(prog);
+  confirmModal(
+    "Add this split?",
+    `${prog.name} — ${plural(st.weeks, "week")}, ${plural(st.days, "day")}, ${plural(st.ex, "exercise")}. ` +
+    `It'll be added to your programs; nothing you already have is changed.`,
+    () => {
+      state.programs.push(prog); save();
+      route.tab = "programs"; route.programId = prog.id;
+      route.weekIdx = Math.max(0, prog.weeks.length - 1);
+      route.openDays = new Set(); render();
+      toast(`Added "${prog.name}"`);
+    });
+}
+
+async function importSharedCode(text) {
+  const m = /[#&]s=([A-Za-z0-9\-_]+)/.exec(text) || /^\s*([A-Za-z0-9\-_]{8,})\s*$/.exec(text);
+  if (!m) return toast("That doesn't look like a share link", true);
+  try {
+    promptImportShared(sanitizeSharedProgram(await decodeShare(m[1])));
+  } catch {
+    toast("That share link is damaged or incomplete", true);
+  }
+}
+
+/* on startup: did we arrive via a share link? */
+async function checkSharedLink() {
+  const m = /[#&]s=([A-Za-z0-9\-_]+)/.exec(location.hash || "");
+  if (!m) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  try {
+    promptImportShared(sanitizeSharedProgram(await decodeShare(m[1])));
+  } catch {
+    toast("That share link is damaged or incomplete", true);
+  }
+}
+
+function openPasteShareModal() {
+  showModal(`
+    <h3>Add a shared split</h3>
+    <div class="muted" style="margin-bottom:10px">Paste a JACKED share link someone sent you.</div>
+    <textarea class="input" id="pasteShare" rows="3" placeholder="https://…/JACKED/#s=…"></textarea>
+    <button class="btn primary block" id="pasteGo" style="margin-top:12px">Add split</button>`);
+  document.getElementById("pasteGo").onclick = () => {
+    const v = document.getElementById("pasteShare").value.trim();
+    if (v) { closeModal(); importSharedCode(v); }
+  };
+}
+
 /* ---------------- Plate calculator ---------------- */
 function openPlateCalc() {
   const u = unit();
@@ -1095,6 +1314,8 @@ document.getElementById("plateBtn").onclick = openPlateCalc;
 applyTheme();
 syncHeader();
 render();
+checkSharedLink();   // did we arrive on a shared-split link?
+window.addEventListener("hashchange", checkSharedLink);
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").catch(() => { /* offline install unavailable */ });

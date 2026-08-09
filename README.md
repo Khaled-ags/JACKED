@@ -8,6 +8,7 @@ A fast, offline-first gym weights tracker. No accounts, no server — your train
 
 - **Programs** — build training blocks (weeks → days → exercises) with sets, reps, RPE, notes, and %-of-1RM auto-calculated weights
 - **Import from screenshot** — upload a picture of a workout split and JACKED reads it (OCR runs in your browser) and builds the program; anything missing in the picture stays blank
+- **Share a split** — send any program to another person as a link. The whole split is compressed into the URL itself, so there's no server and no account: they open the link, see a preview, and choose whether to add it. You can share with or without your working weights
 - **Workout logging** — turn any program day into a dated session and record what you actually lifted, set by set
 - **History** — browse every past workout, grouped by month
 - **Progress** — per-exercise charts (top set + estimated 1RM), best-lift stats, and automatic PR detection with badges

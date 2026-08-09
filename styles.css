@@ -461,6 +461,16 @@ label.field > * { margin-top: 5px; }
 }
 .segmented button.active { background: var(--accent); color: var(--accent-ink); }
 
+/* share sheet */
+.check-row {
+  display: flex; align-items: flex-start; gap: 11px; cursor: pointer;
+  background: var(--sunk); border-radius: var(--r-sm); padding: 13px 14px;
+  font-size: .9rem; line-height: 1.35;
+}
+.check-row input { width: 20px; height: 20px; flex: none; margin: 1px 0 0; accent-color: var(--accent); }
+.check-row small { display: block; margin-top: 2px; font-size: .78rem; }
+#shLink { font-family: ui-monospace, Consolas, monospace; }
+
 /* OCR import progress */
 .ocr-bar { height: 7px; margin-top: 14px; background: var(--sunk); border-radius: 100px; overflow: hidden; }
 .ocr-bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 100px; transition: width .2s ease; }
