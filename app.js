@@ -245,6 +245,23 @@ function renderProgramList() {
 
 /* ---------------- Program editor ---------------- */
 function findProgram() { return state.programs.find(p => p.id === route.programId); }
+const daySetTotal = day => day.exercises.reduce((a, e) => a + (e.sets > 0 ? e.sets : 0), 0);
+
+/* refresh a day header's exercise + set counters without a full re-render */
+function updateDayChips(di) {
+  const dayCard = $view.querySelector(`.day-card[data-day="${di}"]`);
+  const p = findProgram();
+  if (!dayCard || !p) return;
+  const week = p.weeks[route.weekIdx];
+  const day = week && week.days[di];
+  if (!day) return;
+  // always resync: this also corrects the field when a typed count is
+  // clamped (e.g. typing a smaller number, which never removes exercises)
+  const exChip = dayCard.querySelector(".ex-count-input");
+  if (exChip) exChip.value = day.exercises.length;
+  const setChip = dayCard.querySelector(".set-count b");
+  if (setChip) setChip.textContent = daySetTotal(day);
+}
 
 function renderProgramEditor() {
   const p = findProgram();
@@ -270,9 +287,15 @@ function renderProgramEditor() {
         <div class="day-head-label">
           <input class="day-name" data-di="${di}" value="${esc(day.name)}" placeholder="Name this day">
         </div>
-        <span class="ex-count" title="Number of exercises — type a bigger number to add blank ones">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1.5 12h1.5M21 12h1.5"/><rect x="4" y="7.5" width="2.6" height="9" rx="1"/><rect x="17.4" y="7.5" width="2.6" height="9" rx="1"/><path d="M6.6 12h10.8"/></svg>
-          <input class="ex-count-input" data-di="${di}" type="number" inputmode="numeric" min="0" value="${day.exercises.length}" aria-label="Exercise count">
+        <span class="day-counts">
+          <span class="ex-count" title="Exercises — type a bigger number to add blank ones">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1.5 12h1.5M21 12h1.5"/><rect x="4" y="7.5" width="2.6" height="9" rx="1"/><rect x="17.4" y="7.5" width="2.6" height="9" rx="1"/><path d="M6.6 12h10.8"/></svg>
+            <input class="ex-count-input" data-di="${di}" type="number" inputmode="numeric" min="0" value="${day.exercises.length}" aria-label="Exercise count">
+          </span>
+          <span class="set-count" title="Total working sets in this day">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            <b>${daySetTotal(day)}</b>
+          </span>
         </span>
         <span class="caret" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
@@ -372,6 +395,34 @@ function renderProgramEditor() {
   bindExCards(week);
 }
 
+/* Pull http(s) links out of a notes field. A <textarea> can't render
+   clickable text, so detected links are offered as chips underneath it.
+   Only http/https is ever allowed through — no javascript:, no data:. */
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`)\]]+/gi;
+function extractLinks(text) {
+  const out = [], seen = new Set();
+  for (const m of String(text || "").matchAll(URL_RE)) {
+    const raw = m[0].replace(/[.,;:!?]+$/, "");           // drop trailing punctuation
+    const href = /^https?:\/\//i.test(raw) ? raw : "https://" + raw;
+    let u;
+    try { u = new URL(href); } catch { continue; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") continue;
+    if (seen.has(u.href)) continue;
+    seen.add(u.href);
+    let label = u.hostname.replace(/^www\./, "") + (u.pathname === "/" ? "" : u.pathname);
+    if (label.length > 34) label = label.slice(0, 33) + "…";
+    out.push({ href: u.href, label });
+    if (out.length === 6) break;
+  }
+  return out;
+}
+function noteLinksHTML(text) {
+  return extractLinks(text).map(l =>
+    `<a class="note-link" href="${esc(l.href)}" target="_blank" rel="noopener noreferrer" title="${esc(l.href)}">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      ${esc(l.label)}</a>`).join("");
+}
+
 function exCardHTML(ex, di, xi) {
   const lift = liftKey(ex.name);
   const auto = ex.percent != null && lift && state.maxes[lift];
@@ -398,7 +449,8 @@ function exCardHTML(ex, di, xi) {
       <label class="field">Reps<input class="input ex-f" data-f="reps" type="number" inputmode="numeric" value="${ex.reps ?? ""}"></label>
       <label class="field">%1RM<input class="input ex-f" data-f="percent" type="number" inputmode="decimal" value="${ex.percent ?? ""}" placeholder="—"></label>
       <label class="field">RPE<input class="input ex-f" data-f="rpe" type="number" step="0.5" inputmode="decimal" value="${ex.rpe ?? ""}" placeholder="—"></label>
-      <label class="field wide">Description / notes<textarea class="input ex-f ex-notes" data-f="notes" rows="2" placeholder="Cues, tempo, setup… (multiple lines OK)">${esc(ex.notes)}</textarea></label>
+      <label class="field wide">Description / notes<textarea class="input ex-f ex-notes" data-f="notes" rows="2" placeholder="Cues, tempo, a form-check link…">${esc(ex.notes)}</textarea></label>
+      <div class="note-links">${noteLinksHTML(ex.notes)}</div>
     </div>
     ${noMax ? `<div class="badge warn" style="margin-top:8px">Set your ${lift} 1RM in Settings to auto-calc</div>` : ""}
     ${auto ? `<div class="muted" style="margin-top:6px">Auto: ${ex.percent}% of ${fmtW(state.maxes[lift])} 1RM</div>` : ""}
@@ -421,8 +473,7 @@ function appendExercise(week, di, ex) {
   const card = temp.firstElementChild;
   addBtn.parentNode.insertBefore(card, addBtn);
   bindOneExCard(card, week);
-  const chip = dayCard.querySelector(".ex-count-input");
-  if (chip) chip.value = week.days[di].exercises.length;
+  updateDayChips(di);
 }
 
 function bindOneExCard(card, week) {
@@ -434,7 +485,11 @@ function bindOneExCard(card, week) {
       inp.addEventListener("input", () => {
         const f = inp.dataset.f, v = inp.value;
         if (f === "name") ex.name = v;
-        else if (f === "notes") ex.notes = v;
+        else if (f === "notes") {
+          ex.notes = v;
+          const box = card.querySelector(".note-links");
+          if (box) box.innerHTML = noteLinksHTML(v);   // links appear as you type
+        }
         else if (f === "weight") { ex.weightKg = fromDisp(v, exU()); ex.percent = null; const pct = card.querySelector('[data-f="percent"]'); if (pct) pct.value = ""; }
         else if (f === "percent") {
           ex.percent = v === "" ? null : parseFloat(v);
@@ -446,6 +501,7 @@ function bindOneExCard(card, week) {
         }
         else ex[f] = v === "" ? null : parseFloat(v);
         save();
+        if (f === "sets") updateDayChips(di);   // day's set total follows along
       });
     });
     const bump = dir => {

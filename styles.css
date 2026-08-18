@@ -270,7 +270,7 @@ label.field > * { margin-top: 5px; }
 /* ============ Day blocks ============ */
 .day-card { padding: 0; overflow: hidden; margin-bottom: 12px; }
 .day-head {
-  display: flex; align-items: center; gap: 12px; padding: 15px 16px;
+  display: flex; align-items: center; gap: 9px; padding: 15px 13px;
   cursor: pointer; user-select: none; transition: background var(--speed);
 }
 .day-head:active { background: var(--sunk); }
@@ -295,16 +295,40 @@ label.field > * { margin-top: 5px; }
 .day-card:not(.open) .day-body { display: none; }
 .day-body { padding: 0 16px 16px; }
 
-.ex-count {
-  display: inline-flex; align-items: center; gap: 6px; flex: none;
-  background: var(--sunk); border: 1px solid transparent;
-  border-radius: 100px; padding: 6px 12px; color: var(--muted); cursor: text; height: 34px;
+/* one pill, two tallies: exercises (editable) | working sets (read-only) */
+.day-counts {
+  display: inline-flex; align-items: stretch; flex: none; height: 34px;
+  background: var(--sunk); border-radius: 100px; border: 1px solid transparent;
 }
-.ex-count:focus-within { border-color: var(--accent); color: var(--accent); }
+.day-counts:focus-within { border-color: var(--accent); }
+.ex-count, .set-count {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 0 10px; color: var(--muted); background: none;
+}
+.ex-count { cursor: text; }
+.set-count { border-left: 1px solid var(--rule); }
+.ex-count-input, .set-count b {
+  color: var(--ink); font-weight: 800; font-size: .95rem;
+  font-variant-numeric: tabular-nums;
+}
 .ex-count-input {
-  width: 2.2ch; min-width: 2.2ch; background: none; border: none; outline: none;
-  color: var(--ink); font-weight: 800; font-size: 1rem; text-align: center; padding: 0;
+  width: 2.1ch; min-width: 2.1ch; background: none; border: none; outline: none;
+  text-align: center; padding: 0;
 }
+
+/* links found in an exercise description */
+.note-links { grid-column: span 2; display: flex; flex-wrap: wrap; gap: 7px; margin-top: -2px; }
+.note-links:empty { display: none; }
+.note-link {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  background: var(--sunk); color: var(--accent); text-decoration: none;
+  border-radius: 100px; padding: 7px 13px; font-size: .8rem; font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background var(--speed), color var(--speed);
+}
+.note-link svg { flex: none; }
+.note-link:hover { background: var(--accent); color: var(--accent-ink); }
+.note-link:active { transform: scale(.97); }
 
 /* ============ Exercise rows — medium density ============ */
 .ex-card {
