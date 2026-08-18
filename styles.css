@@ -348,8 +348,37 @@ label.field > * { margin-top: 5px; }
   font-weight: 700; font-size: .98rem;
   background: none; border: none; border-radius: 0;
   border-bottom: 1px solid transparent; padding: 5px 2px;
+  text-overflow: ellipsis;   /* last resort once auto-fit hits its floor */
 }
 .ex-name:focus { border-bottom-color: var(--accent); }
+
+/* row actions: inline where there's room, folded into ⋯ on phones */
+.ex-actions { display: none; gap: 9px; flex: none; }
+.ex-menu-wrap { display: inline-flex; flex: none; }
+@media (min-width: 560px) {
+  .ex-actions { display: inline-flex; }
+  .ex-menu-wrap { display: none; }
+}
+.ex-menu-btn { font-size: 1.1rem; line-height: 1; letter-spacing: .06em; }
+
+.ex-menu {
+  position: fixed; z-index: 35; width: 196px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--rule-hard);
+  border-radius: var(--r-sm); box-shadow: 0 14px 34px rgba(0,0,0,.55);
+}
+.ex-menu[hidden] { display: none; }
+.ex-mi {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  background: none; border: none; border-radius: 8px; padding: 12px 12px;
+  color: var(--ink); font: inherit; font-size: .9rem; text-align: left;
+}
+.ex-mi span { width: 14px; text-align: center; color: var(--muted); font-weight: 800; }
+.ex-mi:hover { background: var(--sunk); }
+.ex-mi:active { background: var(--accent); color: var(--accent-ink); }
+.ex-mi.danger { color: var(--danger); }
+.ex-mi.danger span { color: var(--danger); }
+.ex-mi.danger:active { background: var(--danger); color: var(--panel); }
+.ex-menu-sep { border-top: 1px solid var(--rule); margin: 5px 4px; }
 .ex-notes { min-height: 46px; resize: vertical; line-height: 1.45; font-size: .9rem; }
 
 .ex-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; margin-top: 11px; }

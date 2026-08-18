@@ -354,6 +354,8 @@ function renderProgramEditor() {
     // an in-place re-render (e.g. unit toggle) preserves this section's state
     const nowOpen = cardEl.classList.toggle("open");
     if (nowOpen) openDays.add(di); else openDays.delete(di);
+    // names can only be measured once the body is actually displayed
+    if (nowOpen) cardEl.querySelectorAll(".ex-name").forEach(fitExName);
   });
   $view.querySelectorAll(".day-name").forEach(inp => bindValue(inp, v => { week.days[+inp.dataset.di].name = v; }));
   $view.querySelectorAll("[data-deldaay]").forEach(b => b.onclick = () => confirmModal("Delete day?", "", () => {
@@ -432,9 +434,20 @@ function exCardHTML(ex, di, xi) {
     <div class="row ex-head">
       <span class="ex-num">${xi + 1}</span>
       <input class="input grow ex-f ex-name" data-f="name" list="exNames" placeholder="Exercise name" value="${esc(ex.name)}">
-      <button class="btn small ex-up" title="Move up" aria-label="Move up">↑</button>
-      <button class="btn small ex-down" title="Move down" aria-label="Move down">↓</button>
-      <button class="btn small danger ex-del" title="Remove" aria-label="Remove">✕</button>
+      <span class="ex-actions">
+        <button class="btn small ex-up" title="Move up" aria-label="Move up">↑</button>
+        <button class="btn small ex-down" title="Move down" aria-label="Move down">↓</button>
+        <button class="btn small danger ex-del" title="Remove" aria-label="Remove">✕</button>
+      </span>
+      <span class="ex-menu-wrap">
+        <button class="btn small ex-menu-btn" aria-haspopup="menu" aria-expanded="false" title="More" aria-label="More actions">⋯</button>
+        <div class="ex-menu" role="menu" hidden>
+          <button class="ex-mi ex-up" role="menuitem"><span>↑</span>Move up</button>
+          <button class="ex-mi ex-down" role="menuitem"><span>↓</span>Move down</button>
+          <div class="ex-menu-sep"></div>
+          <button class="ex-mi danger ex-del" role="menuitem"><span>✕</span>Remove exercise</button>
+        </div>
+      </span>
     </div>
     <div class="ex-grid">
       <label class="field weightfield">Weight
@@ -519,9 +532,61 @@ function bindOneExCard(card, week) {
       ex.unit = next === unit() ? null : next;
       save(); render({ keepScroll: true });
     };
-    card.querySelector(".ex-del").onclick = () => { list.splice(xi, 1); save(); render({ keepScroll: true }); };
-    card.querySelector(".ex-up").onclick = () => { if (xi > 0) { [list[xi - 1], list[xi]] = [list[xi], list[xi - 1]]; save(); render({ keepScroll: true }); } };
-    card.querySelector(".ex-down").onclick = () => { if (xi < list.length - 1) { [list[xi + 1], list[xi]] = [list[xi], list[xi + 1]]; save(); render({ keepScroll: true }); } };
+    /* each action exists twice — inline on wide screens, in the ⋯ menu on phones */
+    const onAll = (sel, fn) => card.querySelectorAll(sel).forEach(b => b.onclick = fn);
+    onAll(".ex-del", () => { list.splice(xi, 1); save(); render({ keepScroll: true }); });
+    onAll(".ex-up", () => { if (xi > 0) { [list[xi - 1], list[xi]] = [list[xi], list[xi - 1]]; save(); render({ keepScroll: true }); } });
+    onAll(".ex-down", () => { if (xi < list.length - 1) { [list[xi + 1], list[xi]] = [list[xi], list[xi + 1]]; save(); render({ keepScroll: true }); } });
+
+    const menuBtn = card.querySelector(".ex-menu-btn");
+    const menu = card.querySelector(".ex-menu");
+    if (menuBtn && menu) {
+      menuBtn.onclick = () => {
+        const wasOpen = !menu.hidden;
+        closeExMenus();
+        if (!wasOpen) openExMenu(menuBtn, menu);
+      };
+    }
+
+    const nameInput = card.querySelector(".ex-name");
+    if (nameInput) {
+      fitExName(nameInput);
+      nameInput.addEventListener("input", () => fitExName(nameInput));
+    }
+}
+
+/* ---- ⋯ menu ----
+   Positioned fixed so it escapes the day card's overflow:hidden, and
+   flipped above the button when there isn't room below. */
+function openExMenu(btn, menu) {
+  menu.hidden = false;
+  const r = btn.getBoundingClientRect();
+  const mh = menu.offsetHeight, mw = menu.offsetWidth;
+  let top = r.bottom + 6;
+  if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 6);
+  menu.style.top = top + "px";
+  menu.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + "px";
+  btn.setAttribute("aria-expanded", "true");
+}
+function closeExMenus() {
+  document.querySelectorAll(".ex-menu:not([hidden])").forEach(m => { m.hidden = true; });
+  document.querySelectorAll(".ex-menu-btn[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
+}
+
+/* ---- long exercise names ----
+   Step the type down until the whole name fits, rather than widening the
+   row. Falls back to an ellipsis at the floor size. */
+function fitExName(inp) {
+  inp.style.fontSize = "";
+  if (!inp.value) return;
+  let size = parseFloat(getComputedStyle(inp).fontSize);
+  const floor = 12;   // below this it's unreadable and usually still clips,
+                      // so let the ellipsis take over instead
+  let guard = 24;
+  while (inp.scrollWidth > inp.clientWidth && size > floor && guard--) {
+    size -= 0.5;
+    inp.style.fontSize = size + "px";
+  }
 }
 
 /* Create a session from a planned day */
@@ -1366,6 +1431,16 @@ const flipUnit = () => {
 unitToggleEl.onclick = flipUnit;
 unitToggleEl.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flipUnit(); } });
 document.getElementById("plateBtn").onclick = openPlateCalc;
+
+/* dismiss any open ⋯ menu on outside tap, Escape, or scroll (it's fixed) */
+document.addEventListener("click", e => { if (!e.target.closest(".ex-menu-wrap")) closeExMenus(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeExMenus(); });
+window.addEventListener("scroll", () => closeExMenus(), { passive: true });
+/* re-fit names when the row width changes (rotation, window resize) */
+window.addEventListener("resize", () => {
+  closeExMenus();
+  document.querySelectorAll(".day-card.open .ex-name").forEach(fitExName);
+});
 
 applyTheme();
 syncHeader();
